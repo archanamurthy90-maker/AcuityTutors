@@ -1,20 +1,36 @@
 import dotenv from 'dotenv'
 import express from 'express'
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { PrismaClient } from '@prisma/client'
 
-dotenv.config({ path: resolve(process.cwd(), '../.env') })
+const serverDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+dotenv.config({ path: resolve(serverDirectory, '.env') })
 
 const app = express()
-const clientDistPath = resolve(process.cwd(), '../client/dist')
+const prisma = new PrismaClient()
+const clientDistPath = resolve(serverDirectory, '../client/dist')
 
 app.disable('x-powered-by')
 app.use(express.json({ limit: '1mb' }))
 
-app.get('/api/health', (_request, response) => {
+app.get('/api/health', async (_request, response) => {
+  let databaseConnected = false
+
+  if (process.env.DATABASE_URL) {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      databaseConnected = true
+    } catch {
+      databaseConnected = false
+    }
+  }
+
   response.json({
     status: 'ok',
     databaseConfigured: Boolean(process.env.DATABASE_URL),
+    databaseConnected,
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
   })
 })

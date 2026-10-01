@@ -84,3 +84,27 @@ The initial project structure was approved on 2026-09-30. Application feature im
 - Actions: Created the npm workspaces, Acuity service-status client, Express health endpoint, Prisma schema/client setup, local PostgreSQL Compose service, environment examples, and setup docs. Added a `deepmerge-ts` override after npm audit identified a Prisma transitive advisory. Prisma generation, schema validation, full production build, and client lint passed; final `npm audit` reported zero vulnerabilities.
 - Errors: Docker is not installed in this environment, so PostgreSQL could not be started. The initial dependency audit reported three high-severity findings in Prisma's `deepmerge-ts` dependency; the override to 8.0.2 resolved them.
 - Time spent: Not tracked.
+
+## Native PostgreSQL on Windows
+
+- Timestamp: 2026-10-01T12:54:52-04:00
+- Prompt: Switch local setup from Docker to the user's native Windows PostgreSQL installation, check the service and psql, provide the password line for confirmation, then create the database, migrate, seed, inspect in Prisma Studio, verify connectivity, document relationships, and commit.
+- Actions: Confirmed service `postgresql-x64-18` is running and listening on port 5432. `psql` is not on PATH; verified `C:\Program Files\PostgreSQL\18\bin\psql.exe` reports version 18.6. Updated the API to load `server/.env` and test database connectivity with Prisma, updated the UI status, added `server/.env.example`, and changed README setup to native PostgreSQL with Docker Compose as an optional alternative. Documented data relationships and updated project rules. Build passed.
+- Errors: None. Paused before database access to honor the requested password confirmation gate; no password was requested or used.
+- Time spent: Not tracked.
+
+## Demo Seed Preparation
+
+- Timestamp: 2026-10-01T14:14:14-04:00
+- Prompt: Continue with local database creation, initial migration, a tutor/six-student seed, Prisma Studio, health verification, documentation, and commit.
+- Actions: Checked the PostgreSQL service and port again. Added bcrypt-hashed demo accounts and an idempotent seed for two subjects, eight topics, six attempts per student/topic, and mastery snapshots. Added the seed command to README. TypeScript/build checks passed and `npm audit` found zero vulnerabilities. Confirmed `server/.env` is absent; the example had been edited with credential values, so replaced it with placeholders. No database connection or database command was run.
+- Errors: Cannot create the database or run Prisma commands until the user creates `server/.env` with rotated credentials. No secrets were recorded in this log.
+- Time spent: Not tracked.
+
+## Database Migration and Seed Complete
+
+- Timestamp: 2026-10-01T14:32:11-04:00
+- Prompt: Continue after the local environment file was configured: create the database, apply the initial migration, seed the demo roster/history, open Prisma Studio, verify database health, document credentials, and commit.
+- Actions: Confirmed the local PostgreSQL connection without displaying credentials. Created `acuity_tutors`; applied migration `20261001182229_init`; seeded one tutor, six students, two subjects, eight topics, 288 quiz attempts, and 48 mastery snapshots. Opened Prisma Studio at `http://localhost:5555`; its model counts match the seed. Started the app at `http://localhost:5173`; the health UI reports PostgreSQL connected. Updated README with demo-only fixture credentials and the missing-auth caveat. Final build passed and npm audit reported zero vulnerabilities.
+- Errors: An initial PowerShell database-existence check did not handle an empty query result; corrected it and created the database successfully. Two metadata-only command attempts hit shell quoting errors before credentials were printed or used.
+- Time spent: Not tracked.

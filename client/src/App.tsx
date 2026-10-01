@@ -4,6 +4,7 @@ import './App.css'
 type HealthResponse = {
   status: string
   databaseConfigured: boolean
+  databaseConnected: boolean
   geminiConfigured: boolean
 }
 
@@ -86,8 +87,8 @@ function App() {
                 <h3>PostgreSQL</h3>
                 <p>Persistent student and progress data</p>
               </div>
-              <span className={`service-state ${health?.databaseConfigured ? 'state-ready' : 'state-pending'}`}>
-                {health?.databaseConfigured ? 'Configured' : 'Needs configuration'}
+              <span className={`service-state ${health?.databaseConnected ? 'state-ready' : health?.databaseConfigured ? 'state-offline' : 'state-pending'}`}>
+                {health?.databaseConnected ? 'Connected' : health?.databaseConfigured ? 'Configured, not connected' : 'Needs configuration'}
               </span>
             </article>
 
