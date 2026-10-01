@@ -14,6 +14,20 @@ type MasteryScore = {
   topic: { id: string; name: string; subject: { name: string } }
 }
 type RosterStudent = { id: string; displayName: string; email: string; scores: MasteryScore[] }
+type GeneratedPracticeQuestion = {
+  id: string
+  topicId: string
+  question: string
+  options: string[]
+  difficulty: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED'
+  topic: string
+}
+type PracticeResult = {
+  isCorrect: boolean
+  correctAnswer: string
+  explanation: string
+  mastery: { accuracy: number | null; status: MasteryStatus; totalAttempts: number }
+}
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
 const AuthContext = createContext<{
@@ -256,6 +270,15 @@ function WorkspacePage() {
   const [savingAttempt, setSavingAttempt] = useState(false)
   const [attemptMessage, setAttemptMessage] = useState('')
   const [attemptError, setAttemptError] = useState('')
+  const [generatedQuestion, setGeneratedQuestion] = useState<GeneratedPracticeQuestion | null>(null)
+  const [selectedAnswer, setSelectedAnswer] = useState('')
+  const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null)
+  const [generatingQuestion, setGeneratingQuestion] = useState(false)
+  const [submittingAnswer, setSubmittingAnswer] = useState(false)
+  const [practiceError, setPracticeError] = useState('')
+  const [tutorSummaries, setTutorSummaries] = useState<Record<string, string>>({})
+  const [summaryErrors, setSummaryErrors] = useState<Record<string, string>>({})
+  const [summaryLoadingId, setSummaryLoadingId] = useState('')
 
   useEffect(() => {
     if (!user) return
@@ -336,6 +359,74 @@ function WorkspacePage() {
     }
   }
 
+  async function handleGenerateQuestion() {
+    setGeneratingQuestion(true)
+    setPracticeError('')
+    setPracticeResult(null)
+    setSelectedAnswer('')
+    try {
+      const response = await fetch(`${apiBaseUrl}/student/practice-questions`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const data = (await response.json()) as { practiceQuestion?: GeneratedPracticeQuestion; error?: string }
+      if (!response.ok || !data.practiceQuestion) throw new Error(data.error ?? 'Unable to make a practice question.')
+      setGeneratedQuestion(data.practiceQuestion)
+    } catch (requestError) {
+      setPracticeError(requestError instanceof Error ? requestError.message : 'Unable to make a practice question.')
+    } finally {
+      setGeneratingQuestion(false)
+    }
+  }
+
+  async function handlePracticeSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!generatedQuestion || !selectedAnswer) return
+    setSubmittingAnswer(true)
+    setPracticeError('')
+    try {
+      const response = await fetch(`${apiBaseUrl}/student/practice-questions/${generatedQuestion.id}/answer`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer: selectedAnswer }),
+      })
+      const data = (await response.json()) as PracticeResult & { error?: string }
+      if (!response.ok || !data.mastery) throw new Error(data.error ?? 'Unable to grade this answer.')
+      setPracticeResult(data)
+      if (data.mastery.accuracy !== null) {
+        setScores((current) => current.map((score) => score.topic.id === generatedQuestion.topicId
+          ? { ...score, score: data.mastery.accuracy as number, status: data.mastery.status, attemptCount: data.mastery.totalAttempts }
+          : score))
+      }
+    } catch (requestError) {
+      setPracticeError(requestError instanceof Error ? requestError.message : 'Unable to grade this answer.')
+    } finally {
+      setSubmittingAnswer(false)
+    }
+  }
+
+  async function handleGenerateSummary(studentId: string) {
+    setSummaryLoadingId(studentId)
+    setSummaryErrors((current) => ({ ...current, [studentId]: '' }))
+    try {
+      const response = await fetch(`${apiBaseUrl}/tutor/students/${studentId}/summary`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const data = (await response.json()) as { summary?: string; error?: string }
+      if (!response.ok || !data.summary) throw new Error(data.error ?? 'Unable to create a student summary.')
+      setTutorSummaries((current) => ({ ...current, [studentId]: data.summary! }))
+    } catch (requestError) {
+      setSummaryErrors((current) => ({
+        ...current,
+        [studentId]: requestError instanceof Error ? requestError.message : 'Unable to create a student summary.',
+      }))
+    } finally {
+      setSummaryLoadingId('')
+    }
+  }
+
   if (!user) return <LoadingPage />
 
   async function handleLogout() {
@@ -381,6 +472,44 @@ function WorkspacePage() {
               <MasteryTable scores={scores} />
             </section>
 
+              <section className="ai-practice-panel" aria-labelledby="ai-practice-title">
+                <div className="ai-practice-heading">
+                  <div><p className="eyebrow">ADAPTIVE PRACTICE</p><h2 id="ai-practice-title">Practice your weakest topic</h2></div>
+                  <button className="secondary-action" type="button" onClick={handleGenerateQuestion} disabled={generatingQuestion} aria-busy={generatingQuestion}>
+                    {generatingQuestion ? 'Creating…' : generatedQuestion ? 'New question' : 'Generate question'}
+                  </button>
+                </div>
+                <p className="ai-practice-intro">Gemini makes a fresh question at a difficulty matched to your current mastery.</p>
+                {practiceError && <p className="data-error" role="alert">{practiceError}</p>}
+                {generatedQuestion && (
+                  <div className="generated-question">
+                    <div className="question-meta"><span>{generatedQuestion.topic}</span><span>{difficultyLabel(generatedQuestion.difficulty)}</span></div>
+                    <h3>{generatedQuestion.question}</h3>
+                    <form onSubmit={handlePracticeSubmit}>
+                      <fieldset className="practice-options" disabled={Boolean(practiceResult) || submittingAnswer}>
+                        <legend className="visually-hidden">Choose one answer</legend>
+                        {generatedQuestion.options.map((option, index) => (
+                          <label className={`practice-option ${selectedAnswer === option ? 'selected' : ''}`} key={`${index}-${option}`}>
+                            <input type="radio" name="practice-answer" value={option} checked={selectedAnswer === option} onChange={() => setSelectedAnswer(option)} />
+                            <span className="option-letter">{String.fromCharCode(65 + index)}</span>
+                            <span>{option}</span>
+                          </label>
+                        ))}
+                      </fieldset>
+                      {practiceResult && (
+                        <div className={`practice-feedback ${practiceResult.isCorrect ? 'feedback-correct' : 'feedback-incorrect'}`} role="status">
+                          <strong>{practiceResult.isCorrect ? 'Correct' : 'Not quite'}</strong>
+                          <p>Answer: {practiceResult.correctAnswer}</p>
+                          <p>{practiceResult.explanation}</p>
+                          <small>Mastery is now {practiceResult.mastery.accuracy?.toFixed(1)}% · {statusLabel(practiceResult.mastery.status)}</small>
+                        </div>
+                      )}
+                      {!practiceResult && <button className="submit-button practice-submit" type="submit" disabled={!selectedAnswer || submittingAnswer} aria-busy={submittingAnswer}>{submittingAnswer ? 'Checking…' : 'Check answer'} {!submittingAnswer && <span aria-hidden="true">&#8594;</span>}</button>}
+                    </form>
+                  </div>
+                )}
+              </section>
+
             <section className="attempt-panel" aria-labelledby="attempt-title">
               <div><p className="eyebrow">RECORD A QUIZ RESULT</p><h2 id="attempt-title">Log an attempt</h2></div>
               <form className="attempt-form" onSubmit={handleAttemptSubmit}>
@@ -421,6 +550,13 @@ function WorkspacePage() {
                   </div>
                 </header>
                 <MasteryTable scores={student.scores} compact />
+                <div className="tutor-summary-area">
+                  <button className="secondary-action" type="button" onClick={() => handleGenerateSummary(student.id)} disabled={summaryLoadingId === student.id} aria-busy={summaryLoadingId === student.id}>
+                    {summaryLoadingId === student.id ? 'Writing summary…' : tutorSummaries[student.id] ? 'Refresh summary' : 'Generate summary'}
+                  </button>
+                  {summaryErrors[student.id] && <p className="form-error" role="alert">{summaryErrors[student.id]}</p>}
+                  {tutorSummaries[student.id] && <p className="tutor-summary" role="status">{tutorSummaries[student.id]}</p>}
+                </div>
               </article>
             ))}
             {students.length === 0 && <p className="empty-roster">No students are linked to your roster yet.</p>}
@@ -438,6 +574,14 @@ function statusLabel(status: MasteryStatus) {
     case 'DEVELOPING': return 'Developing'
     case 'NEEDS_PRACTICE': return 'Needs Practice'
     case 'NOT_ENOUGH_DATA': return 'Not enough data'
+  }
+}
+
+function difficultyLabel(difficulty: GeneratedPracticeQuestion['difficulty']) {
+  switch (difficulty) {
+    case 'BEGINNER': return 'Easy'
+    case 'INTERMEDIATE': return 'Medium'
+    case 'ADVANCED': return 'Hard'
   }
 }
 
