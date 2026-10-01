@@ -23,6 +23,13 @@ enum AttemptSource {
   PRACTICE
 }
 
+enum MasteryStatus {
+  MASTERED
+  DEVELOPING
+  NEEDS_PRACTICE
+  NOT_ENOUGH_DATA
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -119,6 +126,7 @@ model MasteryScore {
   studentId     String
   topicId       String
   score         Float
+  status        MasteryStatus @default(NOT_ENOUGH_DATA)
   attemptCount  Int      @default(0)
   confidence    Float    @default(0)
   computedAt    DateTime @default(now()) @db.Timestamptz(6)

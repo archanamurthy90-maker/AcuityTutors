@@ -1,5 +1,6 @@
 import { Difficulty, Prisma, PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { calculateTopicMastery } from './services/mastery.js'
 
 const prisma = new PrismaClient()
 
@@ -98,11 +99,11 @@ async function main() {
   }
 
   const studentIds = students.map((student) => student.id)
+  const topicIds = topics.map((topic) => topic.id)
   await prisma.quizAttempt.deleteMany({ where: { studentId: { in: studentIds } } })
   await prisma.masteryScore.deleteMany({ where: { studentId: { in: studentIds } } })
 
   const attempts: Prisma.QuizAttemptCreateManyInput[] = []
-  const masteryScores: Prisma.MasteryScoreCreateManyInput[] = []
   const now = Date.now()
 
   students.forEach((student, studentIndex) => {
@@ -123,19 +124,48 @@ async function main() {
         })
       })
 
-      const correctCount = outcomes.filter(Boolean).length
-      masteryScores.push({
-        studentId: student.id,
-        topicId: topic.id,
-        score: (correctCount / outcomes.length) * 100,
-        attemptCount: outcomes.length,
-        confidence: Math.min(1, outcomes.length / 8),
-        computedAt: new Date(now),
-      })
     })
   })
 
   await prisma.quizAttempt.createMany({ data: attempts })
+
+  const persistedAttempts = await prisma.quizAttempt.findMany({
+    where: { studentId: { in: studentIds }, topicId: { in: topicIds } },
+    select: { studentId: true, topicId: true, isCorrect: true },
+  })
+  const attemptsByStudentAndTopic = new Map<string, {
+    studentId: string
+    topicId: string
+    outcomes: Array<{ isCorrect: boolean }>
+  }>()
+
+  for (const attempt of persistedAttempts) {
+    const key = `${attempt.studentId}:${attempt.topicId}`
+    const group = attemptsByStudentAndTopic.get(key) ?? {
+      studentId: attempt.studentId,
+      topicId: attempt.topicId,
+      outcomes: [],
+    }
+    group.outcomes.push({ isCorrect: attempt.isCorrect })
+    attemptsByStudentAndTopic.set(key, group)
+  }
+
+  const masteryScores: Prisma.MasteryScoreCreateManyInput[] = []
+  for (const group of attemptsByStudentAndTopic.values()) {
+    const mastery = calculateTopicMastery(group.outcomes)
+    if (mastery.accuracy === null) continue
+
+    masteryScores.push({
+      studentId: group.studentId,
+      topicId: group.topicId,
+      score: mastery.accuracy,
+      status: mastery.status,
+      attemptCount: mastery.totalAttempts,
+      confidence: Math.min(1, mastery.totalAttempts / 8),
+      computedAt: new Date(now),
+    })
+  }
+
   await prisma.masteryScore.createMany({ data: masteryScores })
 
   console.log(`Seeded 1 tutor, ${students.length} students, 2 subjects, ${topics.length} topics.`)
