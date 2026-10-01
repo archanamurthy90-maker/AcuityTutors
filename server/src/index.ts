@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient, UserRole } from '@prisma/client'
 import { createAuthRouter, cookieMiddleware, requireAuth, requireRole } from './auth.js'
+import { createMasteryRouter } from './routes/mastery.js'
 
 const serverDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 dotenv.config({ path: resolve(serverDirectory, '.env') })
@@ -18,6 +19,7 @@ app.use(express.json({ limit: '1mb' }))
 app.use(cookieMiddleware)
 
 app.use('/api/auth', createAuthRouter(prisma))
+app.use('/api', createMasteryRouter(prisma))
 
 app.get('/api/health', async (_request, response) => {
   let databaseConnected = false

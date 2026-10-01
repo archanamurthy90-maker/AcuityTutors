@@ -5,6 +5,15 @@ import './App.css'
 type UserRole = 'STUDENT' | 'TUTOR'
 type AuthUser = { id: string; email: string; role: UserRole; displayName: string }
 type AuthMode = 'login' | 'register'
+type MasteryStatus = 'MASTERED' | 'DEVELOPING' | 'NEEDS_PRACTICE' | 'NOT_ENOUGH_DATA'
+type MasteryScore = {
+  id: string
+  score: number
+  status: MasteryStatus
+  attemptCount: number
+  topic: { id: string; name: string; subject: { name: string } }
+}
+type RosterStudent = { id: string; displayName: string; email: string; scores: MasteryScore[] }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
 const AuthContext = createContext<{
@@ -238,25 +247,94 @@ function WorkspacePage() {
   const navigate = useNavigate()
   const [message, setMessage] = useState('Loading your workspace…')
   const [loggingOut, setLoggingOut] = useState(false)
+  const [dataLoading, setDataLoading] = useState(true)
+  const [dataError, setDataError] = useState('')
+  const [scores, setScores] = useState<MasteryScore[]>([])
+  const [students, setStudents] = useState<RosterStudent[]>([])
+  const [selectedTopicId, setSelectedTopicId] = useState('')
+  const [attemptIsCorrect, setAttemptIsCorrect] = useState(true)
+  const [savingAttempt, setSavingAttempt] = useState(false)
+  const [attemptMessage, setAttemptMessage] = useState('')
+  const [attemptError, setAttemptError] = useState('')
 
   useEffect(() => {
     if (!user) return
     let active = true
-    const role = user.role.toLowerCase()
+    const currentRole = user.role
+    const role = currentRole.toLowerCase()
 
-    fetch(`${apiBaseUrl}/${role}/dashboard`, { credentials: 'include' })
-      .then(async (response) => {
-        const data = (await response.json()) as { message?: string; error?: string }
-        if (!response.ok) throw new Error(data.error ?? 'Unable to load your workspace.')
-        return data.message ?? 'Your workspace is ready.'
-      })
-      .then((status) => { if (active) setMessage(status) })
-      .catch((requestError: unknown) => {
-        if (active) setMessage(requestError instanceof Error ? requestError.message : 'Unable to load your workspace.')
-      })
+    async function loadWorkspace() {
+      setDataLoading(true)
+      setDataError('')
+      try {
+        const [dashboardResponse, masteryResponse] = await Promise.all([
+          fetch(`${apiBaseUrl}/${role}/dashboard`, { credentials: 'include' }),
+          fetch(`${apiBaseUrl}/${role}/mastery`, { credentials: 'include' }),
+        ])
+        const dashboardData = (await dashboardResponse.json()) as { message?: string; error?: string }
+        const masteryData = (await masteryResponse.json()) as {
+          scores?: MasteryScore[]
+          students?: RosterStudent[]
+          error?: string
+        }
+
+        if (!dashboardResponse.ok || !masteryResponse.ok) {
+          if (dashboardResponse.status === 401 || masteryResponse.status === 401) setUser(null)
+          throw new Error(masteryData.error ?? dashboardData.error ?? 'Unable to load your workspace.')
+        }
+
+        if (!active) return
+        setMessage(dashboardData.message ?? 'Your workspace is ready.')
+        if (currentRole === 'STUDENT') setScores(masteryData.scores ?? [])
+        else setStudents(masteryData.students ?? [])
+      } catch (requestError) {
+        if (active) setDataError(requestError instanceof Error ? requestError.message : 'Unable to load your workspace.')
+      } finally {
+        if (active) setDataLoading(false)
+      }
+    }
+
+    void loadWorkspace()
 
     return () => { active = false }
-  }, [user])
+  }, [user, setUser])
+
+  async function handleAttemptSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAttemptMessage('')
+    setAttemptError('')
+    if (!selectedTopicId && scores.length === 0) {
+      setAttemptError('There are no topic scores available yet.')
+      return
+    }
+
+    const topicId = selectedTopicId || scores[0].topic.id
+    setSavingAttempt(true)
+    try {
+      const response = await fetch(`${apiBaseUrl}/student/attempts`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topicId, isCorrect: attemptIsCorrect }),
+      })
+      const data = (await response.json()) as {
+        error?: string
+        mastery?: { accuracy: number | null; status: MasteryStatus; totalAttempts: number }
+      }
+      if (!response.ok || !data.mastery) throw new Error(data.error ?? 'Unable to save this attempt.')
+
+      if (data.mastery.accuracy !== null) {
+        setScores((current) => current.map((score) => score.topic.id === topicId
+          ? { ...score, score: data.mastery!.accuracy!, status: data.mastery!.status, attemptCount: data.mastery!.totalAttempts }
+          : score))
+      }
+      setAttemptMessage(`Saved. ${statusLabel(data.mastery.status)} after ${data.mastery.totalAttempts} attempts.`)
+    } catch (requestError) {
+      setAttemptError(requestError instanceof Error ? requestError.message : 'Unable to save this attempt.')
+    } finally {
+      setSavingAttempt(false)
+    }
+  }
 
   if (!user) return <LoadingPage />
 
@@ -292,17 +370,97 @@ function WorkspacePage() {
         <p className="eyebrow">{isStudent ? 'YOUR LEARNING' : 'TUTOR WORKSPACE'}</p>
         <h1>{isStudent ? 'Your practice starts here.' : 'Your roster starts here.'}</h1>
         <p className="dashboard-intro">{message}</p>
+        {dataError && <p className="data-error" role="alert">{dataError}</p>}
+        {dataLoading ? <p className="mastery-loading" aria-live="polite">Loading mastery data…</p> : isStudent ? (
+          <>
+            <section className="mastery-section" aria-labelledby="mastery-title">
+              <div className="mastery-section-heading">
+                <div><p className="eyebrow">TOPIC CLASSIFICATION</p><h2 id="mastery-title">Your mastery</h2></div>
+                <span className="mastery-count">{scores.length} topics</span>
+              </div>
+              <MasteryTable scores={scores} />
+            </section>
 
-        <section className="dashboard-placeholder" aria-labelledby="placeholder-title">
-          <span className="placeholder-index">{isStudent ? '01 / STUDENT' : '01 / TUTOR'}</span>
-          <div className="placeholder-copy">
-            <h2 id="placeholder-title">{isStudent ? 'A focused view of your progress' : 'A clearer view of your students'}</h2>
-            <p>{isStudent ? 'Your topic progress and targeted practice will appear here.' : 'Your roster, student progress, and weak topics will appear here.'}</p>
-          </div>
-          <span className="placeholder-state">WORKSPACE READY</span>
-        </section>
+            <section className="attempt-panel" aria-labelledby="attempt-title">
+              <div><p className="eyebrow">RECORD A QUIZ RESULT</p><h2 id="attempt-title">Log an attempt</h2></div>
+              <form className="attempt-form" onSubmit={handleAttemptSubmit}>
+                <label className="field-label" htmlFor="attempt-topic">Topic</label>
+                <select id="attempt-topic" value={selectedTopicId || scores[0]?.topic.id || ''} onChange={(event) => setSelectedTopicId(event.target.value)} disabled={scores.length === 0}>
+                  {scores.map((score) => <option key={score.topic.id} value={score.topic.id}>{score.topic.subject.name} · {score.topic.name}</option>)}
+                </select>
+                <fieldset className="attempt-result-fieldset">
+                  <legend className="field-label">Result</legend>
+                  <div className="attempt-result-options">
+                    <button className={`attempt-result ${attemptIsCorrect ? 'selected' : ''}`} type="button" aria-pressed={attemptIsCorrect} onClick={() => setAttemptIsCorrect(true)}>Correct</button>
+                    <button className={`attempt-result ${!attemptIsCorrect ? 'selected' : ''}`} type="button" aria-pressed={!attemptIsCorrect} onClick={() => setAttemptIsCorrect(false)}>Incorrect</button>
+                  </div>
+                </fieldset>
+                {attemptError && <p className="form-error" role="alert">{attemptError}</p>}
+                {attemptMessage && <p className="attempt-success" role="status">{attemptMessage}</p>}
+                <button className="submit-button attempt-submit" type="submit" disabled={savingAttempt || scores.length === 0} aria-busy={savingAttempt}>
+                  {savingAttempt ? 'Saving…' : 'Save attempt'} {!savingAttempt && <span aria-hidden="true">&#8594;</span>}
+                </button>
+              </form>
+            </section>
+          </>
+        ) : (
+          <section className="roster-section" aria-labelledby="roster-title">
+            <div className="mastery-section-heading">
+              <div><p className="eyebrow">ROSTER CLASSIFICATION</p><h2 id="roster-title">Student mastery</h2></div>
+              <span className="mastery-count">{students.length} students · {students.reduce((count, student) => count + student.scores.length, 0)} topics</span>
+            </div>
+            {students.map((student) => (
+              <article className="roster-student" key={student.id}>
+                <header className="roster-student-heading">
+                  <div><h3>{student.displayName}</h3><p>{student.email}</p></div>
+                  <div className="roster-status-counts">
+                    <span>{countStatus(student.scores, 'MASTERED')} mastered</span>
+                    <span>{countStatus(student.scores, 'DEVELOPING')} developing</span>
+                    <span>{countStatus(student.scores, 'NEEDS_PRACTICE')} need practice</span>
+                    <span>{countStatus(student.scores, 'NOT_ENOUGH_DATA')} insufficient data</span>
+                  </div>
+                </header>
+                <MasteryTable scores={student.scores} compact />
+              </article>
+            ))}
+            {students.length === 0 && <p className="empty-roster">No students are linked to your roster yet.</p>}
+          </section>
+        )}
       </main>
       <footer className="dashboard-footer"><span>ACUITY TUTORS</span><span>Focused practice starts with a clear picture.</span></footer>
+    </div>
+  )
+}
+
+function statusLabel(status: MasteryStatus) {
+  switch (status) {
+    case 'MASTERED': return 'Mastered'
+    case 'DEVELOPING': return 'Developing'
+    case 'NEEDS_PRACTICE': return 'Needs Practice'
+    case 'NOT_ENOUGH_DATA': return 'Not enough data'
+  }
+}
+
+function countStatus(scores: MasteryScore[], status: MasteryStatus) {
+  return scores.filter((score) => score.status === status).length
+}
+
+function MasteryTable({ scores, compact = false }: { scores: MasteryScore[]; compact?: boolean }) {
+  if (scores.length === 0) return <p className="empty-mastery">No mastery scores yet.</p>
+
+  return (
+    <div className={`mastery-table-wrap ${compact ? 'compact' : ''}`}>
+      <table className="mastery-table">
+        <thead><tr><th scope="col">Topic</th><th scope="col">Accuracy</th><th scope="col">Attempts</th><th scope="col">Classification</th></tr></thead>
+        <tbody>{scores.map((score) => (
+          <tr key={score.id}>
+            <th scope="row"><span>{score.topic.name}</span><small>{score.topic.subject.name}</small></th>
+            <td>{score.score.toFixed(1).replace(/\.0$/, '')}%</td>
+            <td>{score.attemptCount}</td>
+            <td><span className={`mastery-status mastery-status-${score.status.toLowerCase().replaceAll('_', '-')}`}>{statusLabel(score.status)}</span></td>
+          </tr>
+        ))}</tbody>
+      </table>
     </div>
   )
 }

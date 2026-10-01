@@ -11,12 +11,30 @@ const demoTutor = {
 }
 
 const demoStudents = [
-  { email: 'ava@acuity.local', password: 'StudentDemo!2026', displayName: 'Ava Chen', strong: [0, 3, 4, 7] },
-  { email: 'noah@acuity.local', password: 'StudentDemo!2026', displayName: 'Noah Patel', strong: [1, 2, 4, 6] },
-  { email: 'mia@acuity.local', password: 'StudentDemo!2026', displayName: 'Mia Brooks', strong: [0, 2, 5, 7] },
-  { email: 'liam@acuity.local', password: 'StudentDemo!2026', displayName: 'Liam Rivera', strong: [1, 3, 4, 6] },
-  { email: 'zoe@acuity.local', password: 'StudentDemo!2026', displayName: 'Zoe Kim', strong: [0, 1, 6, 7] },
-  { email: 'ethan@acuity.local', password: 'StudentDemo!2026', displayName: 'Ethan Wilson', strong: [2, 3, 4, 5] },
+  {
+    email: 'ava@acuity.local', password: 'StudentDemo!2026', displayName: 'Ava Chen',
+    topicPlans: [{ attempts: 10, correct: 9 }, { attempts: 9, correct: 6 }, { attempts: 8, correct: 3 }, { attempts: 7, correct: 6 }, { attempts: 6, correct: 4 }, { attempts: 11, correct: 5 }, { attempts: 5, correct: 5 }, { attempts: 2, correct: 2 }],
+  },
+  {
+    email: 'noah@acuity.local', password: 'StudentDemo!2026', displayName: 'Noah Patel',
+    topicPlans: [{ attempts: 8, correct: 7 }, { attempts: 9, correct: 7 }, { attempts: 12, correct: 6 }, { attempts: 6, correct: 4 }, { attempts: 5, correct: 4 }, { attempts: 10, correct: 8 }, { attempts: 7, correct: 4 }, { attempts: 11, correct: 10 }],
+  },
+  {
+    email: 'mia@acuity.local', password: 'StudentDemo!2026', displayName: 'Mia Brooks',
+    topicPlans: [{ attempts: 5, correct: 4 }, { attempts: 12, correct: 8 }, { attempts: 10, correct: 5 }, { attempts: 9, correct: 8 }, { attempts: 7, correct: 5 }, { attempts: 6, correct: 2 }, { attempts: 11, correct: 9 }, { attempts: 8, correct: 5 }],
+  },
+  {
+    email: 'liam@acuity.local', password: 'StudentDemo!2026', displayName: 'Liam Rivera',
+    topicPlans: [{ attempts: 7, correct: 4 }, { attempts: 8, correct: 7 }, { attempts: 9, correct: 6 }, { attempts: 6, correct: 3 }, { attempts: 10, correct: 9 }, { attempts: 12, correct: 8 }, { attempts: 5, correct: 3 }, { attempts: 11, correct: 5 }],
+  },
+  {
+    email: 'zoe@acuity.local', password: 'StudentDemo!2026', displayName: 'Zoe Kim',
+    topicPlans: [{ attempts: 11, correct: 9 }, { attempts: 7, correct: 5 }, { attempts: 5, correct: 2 }, { attempts: 12, correct: 11 }, { attempts: 6, correct: 4 }, { attempts: 8, correct: 3 }, { attempts: 9, correct: 8 }, { attempts: 10, correct: 6 }],
+  },
+  {
+    email: 'ethan@acuity.local', password: 'StudentDemo!2026', displayName: 'Ethan Wilson',
+    topicPlans: [{ attempts: 12, correct: 6 }, { attempts: 5, correct: 4 }, { attempts: 7, correct: 5 }, { attempts: 10, correct: 9 }, { attempts: 9, correct: 4 }, { attempts: 6, correct: 4 }, { attempts: 8, correct: 5 }, { attempts: 11, correct: 10 }],
+  },
 ]
 
 const subjectDefinitions = [
@@ -33,17 +51,6 @@ const subjectDefinitions = [
     name: 'Science',
     topics: ['Life Science', 'Matter and Energy', 'Forces and Motion', 'Earth Systems'],
   },
-]
-
-const strongResults = [false, true, true, true, true, true]
-const weakResults = [false, false, false, true, false, true]
-const strongDifficulty = [
-  Difficulty.BEGINNER,
-  Difficulty.BEGINNER,
-  Difficulty.INTERMEDIATE,
-  Difficulty.INTERMEDIATE,
-  Difficulty.ADVANCED,
-  Difficulty.ADVANCED,
 ]
 
 async function main() {
@@ -108,19 +115,25 @@ async function main() {
 
   students.forEach((student, studentIndex) => {
     topics.forEach((topic, topicIndex) => {
-      const isStrong = student.strong.includes(topicIndex)
-      const outcomes = isStrong ? strongResults : weakResults
+      const plan = student.topicPlans[topicIndex]
 
-      outcomes.forEach((isCorrect, attemptIndex) => {
+      Array.from({ length: plan.attempts }, (_, attemptIndex) => {
+        const previousCorrectCount = Math.floor(attemptIndex * plan.correct / plan.attempts)
+        const nextCorrectCount = Math.floor((attemptIndex + 1) * plan.correct / plan.attempts)
+        const isCorrect = nextCorrectCount > previousCorrectCount
+        const difficulty = attemptIndex < plan.attempts / 3
+          ? Difficulty.BEGINNER
+          : attemptIndex < plan.attempts * 2 / 3 ? Difficulty.INTERMEDIATE : Difficulty.ADVANCED
+
         attempts.push({
           studentId: student.id,
           topicId: topic.id,
           isCorrect,
-          difficulty: isStrong ? strongDifficulty[attemptIndex] : attemptIndex < 4 ? Difficulty.BEGINNER : Difficulty.INTERMEDIATE,
+          difficulty,
           source: 'QUIZ',
           response: isCorrect ? 'Correct answer submitted' : 'Incorrect answer submitted',
           responseTimeMs: 42000 + ((studentIndex * 13 + topicIndex * 7 + attemptIndex * 11) % 90000),
-          attemptedAt: new Date(now - (35 - attemptIndex * 5) * 86400000 - studentIndex * 3600000),
+          attemptedAt: new Date(now - (plan.attempts - attemptIndex - 1) * 3 * 86400000 - studentIndex * 3600000),
         })
       })
 

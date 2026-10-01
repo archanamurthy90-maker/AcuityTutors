@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client'
+
 export const masteryStatuses = {
   MASTERED: 'MASTERED',
   DEVELOPING: 'DEVELOPING',
@@ -33,4 +35,42 @@ export function calculateTopicMastery(attempts: readonly AttemptOutcome[]): Topi
   }
 
   return { accuracy, correctAttempts, totalAttempts, status: masteryStatuses.NEEDS_PRACTICE }
+}
+
+export async function recalculateTopicMastery(
+  transaction: Prisma.TransactionClient,
+  studentId: string,
+  topicId: string,
+): Promise<TopicMastery> {
+  const attempts = await transaction.quizAttempt.findMany({
+    where: { studentId, topicId },
+    select: { isCorrect: true },
+  })
+  const mastery = calculateTopicMastery(attempts)
+
+  if (mastery.accuracy === null) {
+    await transaction.masteryScore.deleteMany({ where: { studentId, topicId } })
+    return mastery
+  }
+
+  await transaction.masteryScore.upsert({
+    where: { studentId_topicId: { studentId, topicId } },
+    update: {
+      score: mastery.accuracy,
+      status: mastery.status,
+      attemptCount: mastery.totalAttempts,
+      confidence: Math.min(1, mastery.totalAttempts / 8),
+      computedAt: new Date(),
+    },
+    create: {
+      studentId,
+      topicId,
+      score: mastery.accuracy,
+      status: mastery.status,
+      attemptCount: mastery.totalAttempts,
+      confidence: Math.min(1, mastery.totalAttempts / 8),
+    },
+  })
+
+  return mastery
 }
