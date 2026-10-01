@@ -64,7 +64,13 @@ Stop the container with `docker compose down`. Persistent container data is stor
 
 ## Seeded local demo accounts
 
-The seed creates bcrypt-hashed local demo accounts. Tutor: `tutor@acuity.local` / `TutorDemo!2026`. Student accounts `ava@acuity.local`, `noah@acuity.local`, `mia@acuity.local`, `liam@acuity.local`, `zoe@acuity.local`, and `ethan@acuity.local` all use `StudentDemo!2026`. These are development-only fixture credentials. Authentication routes and a login screen are not implemented yet, so the records are visible in Prisma Studio but cannot currently be used to sign in.
+The seed creates bcrypt-hashed local demo accounts. Tutor: `tutor@acuity.local` / `TutorDemo!2026`. Student accounts `ava@acuity.local`, `noah@acuity.local`, `mia@acuity.local`, `liam@acuity.local`, `zoe@acuity.local`, and `ethan@acuity.local` all use `StudentDemo!2026`. These are development-only fixture credentials.
+
+## Authentication
+
+Open `http://localhost:5173/login` and use a seeded account above. Students land on `/student`; tutors land on `/tutor`. Enter a seeded email with a wrong password to verify the form displays “Email or password is incorrect.” Use the “Create an account” link to test registration, choose a role, and submit a name, email, and password of at least 8 characters. Successful registration creates a bcrypt-hashed account and signs it in. The current student and tutor workspaces are placeholders.
+
+The API provides `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me`. `GET /api/student/dashboard` and `GET /api/tutor/dashboard` require an authenticated session and enforce the matching role. Sessions use an eight-hour HttpOnly, SameSite=Strict JWT cookie. Passwords are hashed with bcrypt; login errors do not disclose whether an email exists.
 
 ## Data relationships
 
@@ -77,4 +83,4 @@ The seed creates bcrypt-hashed local demo accounts. Tutor: `tutor@acuity.local` 
 
 ## Current scaffold boundary
 
-This scaffold includes project structure, the initial relational schema, local database configuration, service health reporting, and seeded demo history. Authentication routes/UI, tutor/student workflows, attempt logging, mastery calculation services, Gemini integration, and Cloud deployment are not implemented or configured yet. Mastery must remain a deterministic calculation from append-only attempt history; generated AI content must not be treated as authoritative mastery data.
+This scaffold includes project structure, the initial relational schema, local database configuration, service health reporting, seeded demo history, and JWT/bcrypt authentication with role-protected workspace placeholders. Tutor roster views, attempt logging workflows, mastery calculation services, Gemini integration, and Cloud deployment are not implemented or configured yet. Mastery must remain a deterministic calculation from append-only attempt history; generated AI content must not be treated as authoritative mastery data.

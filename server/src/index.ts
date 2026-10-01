@@ -3,7 +3,8 @@ import express from 'express'
 import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, UserRole } from '@prisma/client'
+import { createAuthRouter, cookieMiddleware, requireAuth, requireRole } from './auth.js'
 
 const serverDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 dotenv.config({ path: resolve(serverDirectory, '.env') })
@@ -14,6 +15,9 @@ const clientDistPath = resolve(serverDirectory, '../client/dist')
 
 app.disable('x-powered-by')
 app.use(express.json({ limit: '1mb' }))
+app.use(cookieMiddleware)
+
+app.use('/api/auth', createAuthRouter(prisma))
 
 app.get('/api/health', async (_request, response) => {
   let databaseConnected = false
@@ -35,8 +39,20 @@ app.get('/api/health', async (_request, response) => {
   })
 })
 
+app.get('/api/student/dashboard', requireAuth, requireRole(UserRole.STUDENT), (_request, response) => {
+  response.json({ role: UserRole.STUDENT, message: 'Your student workspace is ready.' })
+})
+
+app.get('/api/tutor/dashboard', requireAuth, requireRole(UserRole.TUTOR), (_request, response) => {
+  response.json({ role: UserRole.TUTOR, message: 'Your tutor workspace is ready.' })
+})
+
 app.use('/api', (_request, response) => {
   response.status(404).json({ error: 'API route not found' })
+})
+
+app.use((_error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
+  response.status(500).json({ error: 'Something went wrong. Please try again.' })
 })
 
 if (process.env.NODE_ENV === 'production' && existsSync(clientDistPath)) {
