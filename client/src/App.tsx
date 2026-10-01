@@ -1,6 +1,8 @@
-import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { createContext, lazy, Suspense, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import './App.css'
+
+const AccuracyChart = lazy(() => import('./components/AccuracyChart.js').then((module) => ({ default: module.AccuracyChart })))
 
 type UserRole = 'STUDENT' | 'TUTOR'
 type AuthUser = { id: string; email: string; role: UserRole; displayName: string }
@@ -14,6 +16,23 @@ type MasteryScore = {
   topic: { id: string; name: string; subject: { name: string } }
 }
 type RosterStudent = { id: string; displayName: string; email: string; scores: MasteryScore[] }
+type TopicProgress = {
+  topicId: string
+  topicName: string
+  subjectName: string
+  points: Array<{ attemptedAt: string; accuracy: number; attempts: number; isCorrect: boolean }>
+}
+type ClassTopicSummary = {
+  topicId: string
+  topicName: string
+  subjectName: string
+  averageAccuracy: number
+  studentCount: number
+  needsPractice: number
+  developing: number
+  mastered: number
+  insufficientData: number
+}
 type GeneratedPracticeQuestion = {
   id: string
   topicId: string
@@ -279,6 +298,13 @@ function WorkspacePage() {
   const [tutorSummaries, setTutorSummaries] = useState<Record<string, string>>({})
   const [summaryErrors, setSummaryErrors] = useState<Record<string, string>>({})
   const [summaryLoadingId, setSummaryLoadingId] = useState('')
+  const [studentProgress, setStudentProgress] = useState<TopicProgress[]>([])
+  const [progressLoading, setProgressLoading] = useState(false)
+  const [progressError, setProgressError] = useState('')
+  const [selectedStudentId, setSelectedStudentId] = useState('')
+  const [selectedStudentProgress, setSelectedStudentProgress] = useState<TopicProgress[]>([])
+  const [studentProgressLoading, setStudentProgressLoading] = useState(false)
+  const [studentProgressError, setStudentProgressError] = useState('')
 
   useEffect(() => {
     if (!user) return
@@ -321,6 +347,58 @@ function WorkspacePage() {
 
     return () => { active = false }
   }, [user, setUser])
+
+  useEffect(() => {
+    if (!user || user.role !== 'STUDENT') return
+    let active = true
+
+    fetch(`${apiBaseUrl}/student/progress`, { credentials: 'include' })
+      .then(async (response) => {
+        const data = (await response.json()) as { progress?: TopicProgress[]; error?: string }
+        if (!response.ok) throw new Error(data.error ?? 'Unable to load progress history.')
+        return data.progress ?? []
+      })
+      .then((progress) => { if (active) setStudentProgress(progress) })
+      .catch((error: unknown) => {
+        if (active) setProgressError(error instanceof Error ? error.message : 'Unable to load progress history.')
+      })
+      .finally(() => { if (active) setProgressLoading(false) })
+
+    return () => { active = false }
+  }, [user])
+
+  useEffect(() => {
+    if (!user || user.role !== 'TUTOR' || !selectedStudentId) return
+
+    let active = true
+    fetch(`${apiBaseUrl}/tutor/students/${selectedStudentId}/progress`, { credentials: 'include' })
+      .then(async (response) => {
+        const data = (await response.json()) as { progress?: TopicProgress[]; error?: string }
+        if (!response.ok) throw new Error(data.error ?? 'Unable to load this student’s progress.')
+        return data.progress ?? []
+      })
+      .then((progress) => { if (active) setSelectedStudentProgress(progress) })
+      .catch((error: unknown) => {
+        if (active) setStudentProgressError(error instanceof Error ? error.message : 'Unable to load this student’s progress.')
+      })
+      .finally(() => { if (active) setStudentProgressLoading(false) })
+
+    return () => { active = false }
+  }, [user, selectedStudentId])
+
+  function handleSelectStudent(studentId: string) {
+    if (selectedStudentId === studentId) {
+      setSelectedStudentId('')
+      setSelectedStudentProgress([])
+      setStudentProgressError('')
+      setStudentProgressLoading(false)
+      return
+    }
+    setSelectedStudentId(studentId)
+    setSelectedStudentProgress([])
+    setStudentProgressError('')
+    setStudentProgressLoading(true)
+  }
 
   async function handleAttemptSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -441,6 +519,11 @@ function WorkspacePage() {
   }
 
   const isStudent = user.role === 'STUDENT'
+  const classTopics = summarizeClassTopics(students)
+  const groupedScores = groupScoresBySubject(scores)
+  const masteredTopicCount = countStatus(scores, 'MASTERED')
+  const needsPracticeCount = countStatus(scores, 'NEEDS_PRACTICE')
+  const weakest = weakestScore(scores)
 
   return (
     <div className="workspace-shell">
@@ -464,22 +547,33 @@ function WorkspacePage() {
         {dataError && <p className="data-error" role="alert">{dataError}</p>}
         {dataLoading ? <p className="mastery-loading" aria-live="polite">Loading mastery data…</p> : isStudent ? (
           <>
+            <section className="student-summary-band" aria-label="Mastery summary">
+              {scores.length === 0
+                ? <p>No quiz attempts yet. Try your first practice question to start building a progress history.</p>
+                : <p><strong>{masteredTopicCount} {masteredTopicCount === 1 ? 'topic' : 'topics'} mastered</strong>, {needsPracticeCount} need practice<span className="summary-divider">·</span>{countStatus(scores, 'DEVELOPING')} developing</p>}
+            </section>
             <section className="mastery-section" aria-labelledby="mastery-title">
               <div className="mastery-section-heading">
                 <div><p className="eyebrow">TOPIC CLASSIFICATION</p><h2 id="mastery-title">Your mastery</h2></div>
                 <span className="mastery-count">{scores.length} topics</span>
               </div>
-              <MasteryTable scores={scores} />
+              {groupedScores.length === 0 ? <p className="empty-mastery">Your topic breakdown will appear after your first quiz attempt.</p> : (
+                <GroupedMastery scores={scores} groupedScores={groupedScores} />
+              )}
             </section>
+
+            <ProgressChart progress={studentProgress} loading={progressLoading} error={progressError} title="Accuracy over time" />
 
               <section className="ai-practice-panel" aria-labelledby="ai-practice-title">
                 <div className="ai-practice-heading">
                   <div><p className="eyebrow">ADAPTIVE PRACTICE</p><h2 id="ai-practice-title">Practice your weakest topic</h2></div>
-                  <button className="secondary-action" type="button" onClick={handleGenerateQuestion} disabled={generatingQuestion} aria-busy={generatingQuestion}>
+                  <button className="secondary-action" type="button" onClick={handleGenerateQuestion} disabled={generatingQuestion || scores.length === 0} aria-busy={generatingQuestion}>
                     {generatingQuestion ? 'Creating…' : generatedQuestion ? 'New question' : 'Generate question'}
                   </button>
                 </div>
                 <p className="ai-practice-intro">Gemini makes a fresh question at a difficulty matched to your current mastery.</p>
+                {scores.length === 0 && <p className="practice-empty-note">Log your first quiz attempt before generating targeted practice.</p>}
+                {weakest && <div className="weakest-topic-cue"><span>TOP PRIORITY</span><strong>{weakest.topic.subject.name} · {weakest.topic.name}</strong><span className={`mastery-status mastery-status-${weakest.status.toLowerCase().replaceAll('_', '-')}`}>{statusLabel(weakest.status)}</span></div>}
                 {practiceError && <p className="data-error" role="alert">{practiceError}</p>}
                 {generatedQuestion && (
                   <div className="generated-question">
@@ -533,34 +627,75 @@ function WorkspacePage() {
             </section>
           </>
         ) : (
-          <section className="roster-section" aria-labelledby="roster-title">
-            <div className="mastery-section-heading">
-              <div><p className="eyebrow">ROSTER CLASSIFICATION</p><h2 id="roster-title">Student mastery</h2></div>
-              <span className="mastery-count">{students.length} students · {students.reduce((count, student) => count + student.scores.length, 0)} topics</span>
-            </div>
-            {students.map((student) => (
-              <article className="roster-student" key={student.id}>
-                <header className="roster-student-heading">
-                  <div><h3>{student.displayName}</h3><p>{student.email}</p></div>
-                  <div className="roster-status-counts">
-                    <span>{countStatus(student.scores, 'MASTERED')} mastered</span>
-                    <span>{countStatus(student.scores, 'DEVELOPING')} developing</span>
-                    <span>{countStatus(student.scores, 'NEEDS_PRACTICE')} need practice</span>
-                    <span>{countStatus(student.scores, 'NOT_ENOUGH_DATA')} insufficient data</span>
-                  </div>
-                </header>
-                <MasteryTable scores={student.scores} compact />
-                <div className="tutor-summary-area">
-                  <button className="secondary-action" type="button" onClick={() => handleGenerateSummary(student.id)} disabled={summaryLoadingId === student.id} aria-busy={summaryLoadingId === student.id}>
-                    {summaryLoadingId === student.id ? 'Writing summary…' : tutorSummaries[student.id] ? 'Refresh summary' : 'Generate summary'}
-                  </button>
-                  {summaryErrors[student.id] && <p className="form-error" role="alert">{summaryErrors[student.id]}</p>}
-                  {tutorSummaries[student.id] && <p className="tutor-summary" role="status">{tutorSummaries[student.id]}</p>}
+          <>
+            <section className="class-overview" aria-labelledby="class-overview-title">
+              <div className="mastery-section-heading">
+                <div><p className="eyebrow">CLASS-WIDE SIGNAL</p><h2 id="class-overview-title">Topics needing attention</h2></div>
+                <span className="mastery-count">{classTopics.length} topics</span>
+              </div>
+              {classTopics.length === 0 ? <p className="empty-roster">Class-wide topic patterns will appear when roster attempts are available.</p> : (
+                <div className="mastery-table-wrap">
+                  <table className="mastery-table class-topic-table">
+                    <thead><tr><th scope="col">Topic</th><th scope="col">Avg. accuracy</th><th scope="col">Need practice</th><th scope="col">Developing</th></tr></thead>
+                    <tbody>{classTopics.map((topic) => (
+                      <tr key={topic.topicId}>
+                        <th scope="row"><span>{topic.topicName}</span><small>{topic.subjectName}</small></th>
+                        <td>{topic.averageAccuracy.toFixed(1).replace(/\.0$/, '')}%</td>
+                        <td><span className="class-count-needs">{topic.needsPractice} / {topic.studentCount}</span></td>
+                        <td>{topic.developing}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
                 </div>
-              </article>
-            ))}
-            {students.length === 0 && <p className="empty-roster">No students are linked to your roster yet.</p>}
-          </section>
+              )}
+            </section>
+
+            <section className="roster-section" aria-labelledby="roster-title">
+              <div className="mastery-section-heading">
+                <div><p className="eyebrow">ROSTER CLASSIFICATION</p><h2 id="roster-title">Student overview</h2></div>
+                <span className="mastery-count">{students.length} students</span>
+              </div>
+              {students.map((student) => {
+                const overall = getOverallMastery(student.scores)
+                const weakTopics = getWeakTopics(student.scores)
+                const isSelected = selectedStudentId === student.id
+                const groupedStudentScores = groupScoresBySubject(student.scores)
+
+                return (
+                  <article className={`roster-student ${isSelected ? 'roster-student-selected' : ''}`} key={student.id}>
+                    <header className="roster-student-heading">
+                      <div className="roster-student-identity">
+                        <button className="student-select" type="button" aria-expanded={isSelected} onClick={() => handleSelectStudent(student.id)}>{student.displayName}</button>
+                        <p>{student.email}</p>
+                        <p className="roster-weak-topics"><strong>Focus:</strong> {weakTopics.length ? weakTopics.slice(0, 3).map((score) => score.topic.name).join(', ') : 'No identified weak topics'}</p>
+                      </div>
+                      <div className="roster-student-metrics">
+                        <span className={`mastery-status mastery-status-${overall.status.toLowerCase().replaceAll('_', '-')}`}>Overall: {statusLabel(overall.status)}</span>
+                        <span>{overall.accuracy === null ? 'No scored attempts' : `${overall.accuracy.toFixed(1)}% overall`}</span>
+                        <span>{countStatus(student.scores, 'NEEDS_PRACTICE')} need practice</span>
+                        <span>{countStatus(student.scores, 'DEVELOPING')} developing</span>
+                      </div>
+                    </header>
+                    <div className="tutor-summary-area">
+                      <button className="secondary-action" type="button" onClick={() => handleGenerateSummary(student.id)} disabled={summaryLoadingId === student.id} aria-busy={summaryLoadingId === student.id}>
+                        {summaryLoadingId === student.id ? 'Writing summary…' : tutorSummaries[student.id] ? 'Refresh summary' : 'Generate summary'}
+                      </button>
+                      {summaryErrors[student.id] && <p className="form-error" role="alert">{summaryErrors[student.id]}</p>}
+                      {tutorSummaries[student.id] && <p className="tutor-summary" role="status">{tutorSummaries[student.id]}</p>}
+                    </div>
+                    {isSelected && (
+                      <section className="student-detail" aria-labelledby={`detail-${student.id}`}>
+                        <h3 id={`detail-${student.id}`}>Full topic breakdown</h3>
+                        <GroupedMastery scores={student.scores} groupedScores={groupedStudentScores} compact />
+                        <ProgressChart progress={selectedStudentProgress} loading={studentProgressLoading} error={studentProgressError} title={`${student.displayName} progress over time`} />
+                      </section>
+                    )}
+                  </article>
+                )
+              })}
+              {students.length === 0 && <p className="empty-roster">No students are linked to your roster yet.</p>}
+            </section>
+          </>
         )}
       </main>
       <footer className="dashboard-footer"><span>ACUITY TUTORS</span><span>Focused practice starts with a clear picture.</span></footer>
@@ -589,6 +724,68 @@ function countStatus(scores: MasteryScore[], status: MasteryStatus) {
   return scores.filter((score) => score.status === status).length
 }
 
+function weakestScore(scores: MasteryScore[]) {
+  const priority: Record<MasteryStatus, number> = {
+    NEEDS_PRACTICE: 0,
+    DEVELOPING: 1,
+    NOT_ENOUGH_DATA: 2,
+    MASTERED: 3,
+  }
+  return [...scores].sort((left, right) => priority[left.status] - priority[right.status] || left.score - right.score)[0]
+}
+
+function getWeakTopics(scores: MasteryScore[]) {
+  return scores
+    .filter((score) => score.status === 'NEEDS_PRACTICE' || score.status === 'DEVELOPING')
+    .sort((left, right) => {
+      if (left.status !== right.status) return left.status === 'NEEDS_PRACTICE' ? -1 : 1
+      return left.score - right.score
+    })
+}
+
+function getOverallMastery(scores: MasteryScore[]) {
+  const attempts = scores.reduce((total, score) => total + score.attemptCount, 0)
+  if (attempts < 3) return { accuracy: null, status: 'NOT_ENOUGH_DATA' as const }
+  const correct = scores.reduce((total, score) => total + score.score * score.attemptCount / 100, 0)
+  const accuracy = correct / attempts * 100
+  const status = accuracy >= 80 ? 'MASTERED' : accuracy >= 60 ? 'DEVELOPING' : 'NEEDS_PRACTICE'
+  return { accuracy, status: status as MasteryStatus }
+}
+
+function summarizeClassTopics(students: RosterStudent[]): ClassTopicSummary[] {
+  const topicGroups = new Map<string, { summary: ClassTopicSummary; accuracyTotal: number }>()
+  for (const student of students) {
+    for (const score of student.scores) {
+      const group = topicGroups.get(score.topic.id) ?? {
+        accuracyTotal: 0,
+        summary: {
+          topicId: score.topic.id,
+          topicName: score.topic.name,
+          subjectName: score.topic.subject.name,
+          averageAccuracy: 0,
+          studentCount: 0,
+          needsPractice: 0,
+          developing: 0,
+          mastered: 0,
+          insufficientData: 0,
+        },
+      }
+      group.accuracyTotal += score.score
+      group.summary.studentCount += 1
+      if (score.status === 'NEEDS_PRACTICE') group.summary.needsPractice += 1
+      if (score.status === 'DEVELOPING') group.summary.developing += 1
+      if (score.status === 'MASTERED') group.summary.mastered += 1
+      if (score.status === 'NOT_ENOUGH_DATA') group.summary.insufficientData += 1
+      group.summary.averageAccuracy = group.accuracyTotal / group.summary.studentCount
+      topicGroups.set(score.topic.id, group)
+    }
+  }
+
+  return [...topicGroups.values()].map(({ summary }) => summary).sort((left, right) =>
+    right.needsPractice - left.needsPractice || right.developing - left.developing || left.averageAccuracy - right.averageAccuracy,
+  )
+}
+
 function MasteryTable({ scores, compact = false }: { scores: MasteryScore[]; compact?: boolean }) {
   if (scores.length === 0) return <p className="empty-mastery">No mastery scores yet.</p>
 
@@ -606,6 +803,89 @@ function MasteryTable({ scores, compact = false }: { scores: MasteryScore[]; com
         ))}</tbody>
       </table>
     </div>
+  )
+}
+
+function groupScoresBySubject(scores: MasteryScore[]) {
+  const groups = new Map<string, MasteryScore[]>()
+  for (const score of scores) {
+    const group = groups.get(score.topic.subject.name) ?? []
+    group.push(score)
+    groups.set(score.topic.subject.name, group)
+  }
+  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right))
+}
+
+function GroupedMastery({
+  scores,
+  groupedScores = groupScoresBySubject(scores),
+  compact = false,
+}: {
+  scores: MasteryScore[]
+  groupedScores?: Array<[string, MasteryScore[]]>
+  compact?: boolean
+}) {
+  return (
+    <div className={`grouped-mastery ${compact ? 'grouped-mastery-compact' : ''}`}>
+      {groupedScores.map(([subject, subjectScores]) => (
+        <section className="subject-mastery-group" key={subject} aria-label={`${subject} topics`}>
+          <h3>{subject}</h3>
+          <MasteryTable scores={subjectScores} compact={compact} />
+        </section>
+      ))}
+    </div>
+  )
+}
+
+function ProgressChart({
+  progress,
+  loading,
+  error,
+  title,
+}: {
+  progress: TopicProgress[]
+  loading: boolean
+  error: string
+  title: string
+}) {
+  const [requestedTopicId, setRequestedTopicId] = useState('')
+  const selectedTopicId = progress.some((topic) => topic.topicId === requestedTopicId)
+    ? requestedTopicId
+    : progress[0]?.topicId ?? ''
+
+  const selectedTopic = progress.find((topic) => topic.topicId === selectedTopicId)
+  const chartPoints = selectedTopic?.points.map((point) => ({
+    ...point,
+    date: new Date(point.attemptedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+  })) ?? []
+
+  return (
+    <section className="progress-panel" aria-labelledby={`progress-${title.replaceAll(' ', '-')}`}>
+      <header className="progress-panel-heading">
+        <div><p className="eyebrow">ATTEMPT HISTORY</p><h2 id={`progress-${title.replaceAll(' ', '-')}`}>{title}</h2></div>
+        {progress.length > 0 && (
+          <label className="progress-topic-select">
+            <span>Topic</span>
+            <select value={selectedTopicId} onChange={(event) => setRequestedTopicId(event.target.value)}>
+              {progress.map((topic) => <option key={topic.topicId} value={topic.topicId}>{topic.subjectName} · {topic.topicName}</option>)}
+            </select>
+          </label>
+        )}
+      </header>
+      {loading ? <p className="progress-empty" aria-live="polite">Loading attempt history…</p>
+        : error ? <p className="progress-error" role="alert">{error}</p>
+          : !selectedTopic || chartPoints.length === 0 ? <p className="progress-empty">No quiz attempts yet. Your accuracy chart will appear after your first answer.</p>
+            : (
+              <>
+                <p className="progress-chart-caption">Running accuracy after each saved attempt.</p>
+                <div className="accuracy-chart">
+                  <Suspense fallback={<p className="chart-loading">Loading chart…</p>}>
+                    <AccuracyChart points={chartPoints} />
+                  </Suspense>
+                </div>
+              </>
+            )}
+    </section>
   )
 }
 

@@ -17,6 +17,22 @@ export type TopicMastery = {
   status: MasteryStatus
 }
 
+export type ProgressAttempt = {
+  id: string
+  topicId: string
+  topicName: string
+  subjectName: string
+  isCorrect: boolean
+  attemptedAt: Date
+}
+
+export type TopicProgressSeries = {
+  topicId: string
+  topicName: string
+  subjectName: string
+  points: Array<{ attemptedAt: string; accuracy: number; attempts: number; isCorrect: boolean }>
+}
+
 export function calculateTopicMastery(attempts: readonly AttemptOutcome[]): TopicMastery {
   const totalAttempts = attempts.length
   const correctAttempts = attempts.reduce((total, attempt) => total + Number(attempt.isCorrect), 0)
@@ -35,6 +51,38 @@ export function calculateTopicMastery(attempts: readonly AttemptOutcome[]): Topi
   }
 
   return { accuracy, correctAttempts, totalAttempts, status: masteryStatuses.NEEDS_PRACTICE }
+}
+
+export function buildTopicProgressSeries(attempts: readonly ProgressAttempt[]): TopicProgressSeries[] {
+  const orderedAttempts = [...attempts].sort((left, right) =>
+    left.attemptedAt.getTime() - right.attemptedAt.getTime() || left.id.localeCompare(right.id),
+  )
+  const seriesByTopic = new Map<string, TopicProgressSeries>()
+  const totalsByTopic = new Map<string, { attempts: number; correct: number }>()
+
+  for (const attempt of orderedAttempts) {
+    const series = seriesByTopic.get(attempt.topicId) ?? {
+      topicId: attempt.topicId,
+      topicName: attempt.topicName,
+      subjectName: attempt.subjectName,
+      points: [],
+    }
+    const totals = totalsByTopic.get(attempt.topicId) ?? { attempts: 0, correct: 0 }
+    totals.attempts += 1
+    totals.correct += Number(attempt.isCorrect)
+    series.points.push({
+      attemptedAt: attempt.attemptedAt.toISOString(),
+      accuracy: totals.correct / totals.attempts * 100,
+      attempts: totals.attempts,
+      isCorrect: attempt.isCorrect,
+    })
+    seriesByTopic.set(attempt.topicId, series)
+    totalsByTopic.set(attempt.topicId, totals)
+  }
+
+  return [...seriesByTopic.values()].sort((left, right) =>
+    left.subjectName.localeCompare(right.subjectName) || left.topicName.localeCompare(right.topicName),
+  )
 }
 
 export async function recalculateTopicMastery(

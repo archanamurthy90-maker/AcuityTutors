@@ -163,7 +163,7 @@ footer span:first-child { font-weight: 700; letter-spacing: 1.2px; }
 .mastery-section-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 15px; }
 .mastery-section-heading .eyebrow { margin-bottom: 7px; }
 .mastery-count { color: var(--muted); font-size: 11px; white-space: nowrap; }
-.mastery-table-wrap { overflow-x: auto; border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line); background: var(--white); }
+.mastery-table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line); background: var(--white); }
 .mastery-table { width: 100%; min-width: 610px; border-collapse: collapse; text-align: left; }
 .mastery-table th, .mastery-table td { padding: 12px 15px; border-bottom: 1px solid var(--line); color: var(--ink); font-size: 12px; font-weight: 400; vertical-align: middle; }
 .mastery-table thead th { background: #f0f3ec; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; }
@@ -247,4 +247,59 @@ footer span:first-child { font-weight: 700; letter-spacing: 1.2px; }
   .ai-practice-heading { align-items: flex-start; flex-direction: column; }
   .ai-practice-heading .secondary-action { align-self: flex-start; }
   .practice-submit { max-width: none; }
+}
+
+.student-summary-band { margin: 25px 0 34px; padding: 14px 17px; border-left: 3px solid var(--moss); background: #eff4ed; color: #34523b; }
+.student-summary-band p { margin: 0; font-family: var(--display); font-size: 17px; line-height: 1.5; }
+.student-summary-band strong { font-weight: 600; }
+.summary-divider { margin: 0 9px; color: #93a295; }
+.grouped-mastery { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; min-width: 0; max-width: 100%; }
+.subject-mastery-group { width: 100%; min-width: 0; max-width: 100%; }
+.subject-mastery-group > h3 { margin: 0; padding: 10px 13px; border-top: 1px solid var(--line-strong); background: #f0f3ec; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: 0.9px; text-transform: uppercase; }
+.subject-mastery-group .mastery-table-wrap { border-top: 0; }
+.grouped-mastery-compact { gap: 12px; padding: 0 14px 14px; }
+.grouped-mastery-compact .subject-mastery-group > h3 { padding: 8px 11px; font-size: 9px; }
+.grouped-mastery-compact .mastery-table-wrap { border-bottom: 1px solid var(--line); }
+.grouped-mastery-compact .mastery-table { min-width: 560px; }
+.grouped-mastery-compact .mastery-table tbody th { min-width: 190px; }
+.weakest-topic-cue { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 18px; padding: 11px 12px; border: 1px solid var(--line); background: #f8f8f3; }
+.weakest-topic-cue > span:first-child { color: var(--coral); font-size: 9px; font-weight: 700; letter-spacing: 0.85px; }
+.weakest-topic-cue strong { color: var(--ink); font-family: var(--display); font-size: 13px; font-weight: 400; }
+.class-overview { margin: 34px 0 42px; animation: rise-in 380ms ease-out both; }
+.class-topic-table { min-width: 620px; }
+.class-count-needs { color: #974e43; font-weight: 700; }
+.roster-student-identity { min-width: 180px; }
+.student-select { padding: 0; border: 0; background: transparent; color: var(--ink); cursor: pointer; font-family: var(--display); font-size: 18px; text-align: left; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; }
+.student-select:hover { text-decoration-color: var(--moss); }
+.student-select:focus-visible { outline: 2px solid rgba(85, 116, 93, 0.35); outline-offset: 3px; }
+.roster-student-heading .student-select { margin-bottom: 3px; }
+.roster-weak-topics { max-width: 360px; margin-top: 8px !important; color: #843f35 !important; font-size: 10px !important; line-height: 1.5; }
+.roster-weak-topics strong { color: var(--muted); }
+.roster-student-metrics { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.roster-student-metrics > span:not(.mastery-status) { padding: 5px 7px; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); font-size: 9px; white-space: nowrap; }
+.roster-student-selected { border-color: #bdcdbd; }
+.student-detail { padding-top: 16px; border-top: 1px solid var(--line); }
+.student-detail > h3 { margin: 0 14px 13px; color: var(--ink); font-family: var(--display); font-size: 19px; font-weight: 400; }
+.progress-panel { margin-top: 30px; padding: 21px 22px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.84); }
+.progress-panel-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; }
+.progress-panel-heading .eyebrow { margin-bottom: 7px; }
+.progress-panel-heading h2 { font-size: 20px; }
+.progress-topic-select { display: grid; gap: 5px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: 0.6px; }
+.progress-topic-select select { width: min(260px, 52vw); min-height: 35px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 3px; background: #fff; color: var(--ink); font-size: 11px; }
+.progress-chart-caption { margin: 13px 0 2px; color: var(--muted); font-size: 10px; }
+.accuracy-chart { width: 100%; height: 240px; min-width: 0; margin-top: 5px; }
+.chart-loading, .progress-empty { padding: 35px 0; color: var(--muted); font-size: 12px; }
+.progress-error { padding: 12px; border-left: 3px solid var(--coral); background: #fbefec; color: #843f35; font-size: 12px; }
+
+@media (max-width: 720px) {
+  .student-summary-band { margin: 18px 0 25px; padding: 12px; }
+  .student-summary-band p { font-size: 15px; }
+  .weakest-topic-cue { align-items: flex-start; flex-direction: column; }
+  .roster-student-metrics { justify-content: flex-start; }
+  .progress-panel { padding: 17px 13px; }
+  .progress-panel-heading { align-items: flex-start; flex-direction: column; }
+  .progress-topic-select, .progress-topic-select select { width: 100%; }
+  .accuracy-chart { height: 205px; }
+  .class-overview { margin-top: 25px; }
+  .subject-mastery-group .mastery-table-wrap { overflow-x: auto; }
 }

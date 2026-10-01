@@ -141,6 +141,22 @@ The initial project structure was approved on 2026-09-30. Application feature im
 - Errors: The first full server build caught an apostrophe quoting error in the tutor prompt string; corrected and rebuilt successfully. Browser automation initially used a stale logged-in tab; opened a fresh page/session and completed the feature calls. No provider/API errors occurred during the live generation checks.
 - Time spent: Not tracked.
 
+## Complete Mastery Dashboards
+
+- Timestamp: 2026-10-01T17:27:04-04:00
+- Prompt: Complete student/tutor dashboards with grouped mastery, accuracy-over-time chart, weakest topic and summary, class-wide topic ranking, selectable student detail, preserved Gemini features, loading/error/empty states, phone-width verification, documentation, and commit.
+- Actions: Added chronological per-topic cumulative accuracy series helper and unit test. Added protected `GET /api/student/progress` and roster-owned `GET /api/tutor/students/:studentId/progress`. Student dashboard now groups levels by subject, summarizes mastered/needs-practice counts, flags the weakest topic, and plots per-topic accuracy after each attempt. Tutor dashboard now ranks class topics by needs-practice/developing counts, reports weighted overall mastery and each student's weak topics, and opens a grouped detail/progress chart while retaining per-student Gemini summaries. Added empty/no-attempt messaging and disabled AI generation until student topics exist. Lazy-loaded Recharts to keep the initial bundle smaller. At 375px, fixed a 610px grid-child overflow by constraining the mastery grid while keeping its table internally scrollable; verified student and tutor document widths remain 375px. Confirmed selected tutor detail shows two subject groups, an 8-topic breakdown, a rendered progress chart, and all six summary actions. README documents endpoints, browser flows, and phone behavior. Six server tests, full build, client lint, editor diagnostics, and npm audit passed.
+- Errors: First phone-width probe found document width 628px at a 375px viewport due a minimum-content grid table; fixed and rechecked at 375px with no page overflow. The browser harness timed out scrolling to an off-screen roster button; direct element activation opened detail and confirmed the chart. Oxlint initially flagged three synchronous state updates in effects; moved selection resets into the event handler and derived chart selection from current series, then lint passed without warnings.
+- Time spent: Not tracked.
+
+## Complete Mastery Dashboards
+
+- Timestamp: 2026-10-01T17:22:38-04:00
+- Prompt: Complete student and tutor dashboards while preserving AI practice/summary: subject-grouped mastery, cumulative accuracy charts, weakest-topic focus and summary, tutor class-wide weak-topic view, selectable student detail, loading/error/empty states, phone-width layout, documentation, and commit.
+- Actions: Added chronological per-topic cumulative accuracy series helper and unit test. Added protected `GET /api/student/progress` and roster-owned `GET /api/tutor/students/:studentId/progress`. Student dashboard now groups levels by subject, summarizes mastered/needs-practice counts, flags the weakest topic, and plots per-topic accuracy after each attempt. Tutor dashboard now ranks class topics by needs-practice/developing counts, reports overall weighted mastery and each student's weak topics, and opens a grouped detail/progress chart while retaining per-student Gemini summaries. Added empty/no-attempt messaging and disabled AI generation until student topics exist. Lazy-loaded Recharts to keep the initial bundle smaller. At 375px, fixed a 610px grid-child overflow by constraining the mastery grid while keeping its table internally scrollable; verified student and tutor document widths remain equal to the viewport. README now documents the progress endpoints, views, browser test, and phone behavior.
+- Errors: First phone-width probe found document width 628px at a 375px viewport due a minimum-content grid table; fixed and rechecked at 375px with no page overflow. Browser action helpers timed out scrolling to an off-screen roster button; direct element interaction expanded the student detail and rendered its chart.
+- Time spent: Not tracked.
+
 ## Gemini Practice and Summaries
 
 - Timestamp: 2026-10-01T16:39:30-04:00
