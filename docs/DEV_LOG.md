@@ -149,6 +149,14 @@ The initial project structure was approved on 2026-09-30. Application feature im
 - Errors: First phone-width probe found document width 628px at a 375px viewport due a minimum-content grid table; fixed and rechecked at 375px with no page overflow. The browser harness timed out scrolling to an off-screen roster button; direct element activation opened detail and confirmed the chart. Oxlint initially flagged three synchronous state updates in effects; moved selection resets into the event handler and derived chart selection from current series, then lint passed without warnings.
 - Time spent: Not tracked.
 
+## Final End-to-End Checklist and Deployment Docs
+
+- Timestamp: 2026-10-01T17:45:28-04:00
+- Prompt: Test student/tutor login, wrong password, empty forms, student access to tutor route, Gemini bad-key handling, no-attempt student, and mobile layout. Finalize README setup, env variables, features, Cloud Run guidance; update log and commit.
+- Actions: Verified student and tutor sign-in in the browser; empty login/register forms show validation errors; wrong password shows the generic credential error; student navigation to `/tutor` returns to `/student`. Started an isolated API on port 3101 with a throwaway invalid Gemini key, verified generation returns a friendly 502 without echoing the key, then stopped it without changing `server/.env`. Registered a temporary student with no attempts and confirmed empty summary/mastery/progress states and disabled question generation; deleted the temporary account and verified the six seeded students remain. Verified tutor class roster and health. Rechecked student/tutor dashboards at a 375px viewport; no page horizontal overflow. Finalized README environment-variable inventory, current features, local setup, and Cloud Run/Cloud SQL deployment outline, explicitly marking deployment as unconfigured. Six server tests, full build, client lint, diagnostics, and npm audit passed; audit reported zero vulnerabilities.
+- Errors: Browser assertions were initially read before some async workspace data finished loading; waiting for the final loaded heading/table resolved the checks. No product errors remained.
+- Time spent: Not tracked.
+
 ## Complete Mastery Dashboards
 
 - Timestamp: 2026-10-01T17:22:38-04:00

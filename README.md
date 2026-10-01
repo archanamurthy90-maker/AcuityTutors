@@ -8,13 +8,26 @@ A full-stack tutoring-center application foundation for focused practice and dur
 - Node.js + Express + TypeScript (`server/`)
 - PostgreSQL + Prisma (`prisma/`)
 - Local development uses a native PostgreSQL installation; Docker Compose is an optional alternative.
-- Gemini is reserved for server-side question generation and tutor summaries; no Gemini integration is implemented yet.
+- Gemini 3.8 Flash through the server-only Interactions API for adaptive practice questions and tutor summaries.
 
 ## Prerequisites
 
 - Node.js 20.19+ (Node 22+ recommended)
 - npm 10+
 - PostgreSQL 16+ running on `localhost:5432` (Windows installer or optional Docker Compose)
+
+## Environment variables
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `DATABASE_URL` | `server/.env` / Cloud Run secret | Prisma PostgreSQL connection string. |
+| `JWT_SECRET` | `server/.env` / Secret Manager | JWT signing secret; use a random value of at least 32 characters. |
+| `GEMINI_API_KEY` | `server/.env` / Secret Manager | Server-only Gemini API credential. Never prefix it with `VITE_`. |
+| `PORT` | `server/.env` / Cloud Run runtime | Express listen port; defaults to `3001` locally. Cloud Run supplies this automatically. |
+| `NODE_ENV` | process environment | Set to `production` in deployment to enable secure cookies and static frontend serving. |
+| `VITE_API_BASE_URL` | `client/.env` | Browser API base; defaults to same-origin `/api`. Safe for client exposure. |
+| `VITE_API_PROXY_TARGET` | Vite process environment | Optional development proxy target; defaults to `http://localhost:3001`. |
+| `POSTGRES_PASSWORD` | root `.env`, Docker only | Optional Compose database password; Compose defaults to `acuity_local_dev` for local use. |
 
 ## Local development with PostgreSQL on Windows
 
@@ -61,7 +74,7 @@ Stop the container with `docker compose down`. Persistent container data is stor
 - `npm run db:deploy` applies committed migrations in a deployment environment.
 - `npm run db:seed` creates or refreshes the local demo tutor, students, topics, quiz history, and mastery snapshots.
 - `npm run db:studio` opens Prisma Studio.
-- `npm test --workspace=server` runs the mastery scoring boundary tests.
+- `npm test --workspace=server` runs mastery, progress-series, and Gemini response/error tests.
 
 ## Seeded local demo accounts
 
@@ -106,6 +119,36 @@ The student page groups mastery by subject, shows mastered/needs-practice counts
 - Each `MasteryScore` is the current per-student/per-topic snapshot, unique for that pair and recomputable from the attempt history.
 - Each `PracticeQuestion` belongs to a student and topic and stores its choices, answer, explanation, and difficulty for later review.
 
+## Cloud Run and Cloud SQL deployment
+
+Deployment is **not configured or performed**. This is a deployment outline; verify region, IAM, networking, database sizing, backups, budgets, and billing choices for the target project before using it. Cloud SQL does not scale to zero, so set budget alerts and stop/start non-production instances deliberately.
+
+Install and authenticate the Google Cloud CLI, select a billing-enabled project, then enable the deployment APIs:
+
+```powershell
+gcloud config set project PROJECT_ID
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
+```
+
+1. Create a Cloud SQL for PostgreSQL instance, database, and least-privilege application user. Plan backups, high availability, and authorized network access. Record the instance connection name (`PROJECT_ID:REGION:INSTANCE_ID`).
+2. Create a Cloud Run runtime service account. Grant it `Cloud SQL Client` and `Secret Manager Secret Accessor` for only the required secrets.
+3. Store `DATABASE_URL`, `JWT_SECRET`, and `GEMINI_API_KEY` in Secret Manager. For the Cloud Run Cloud SQL Unix socket, use a URL shaped like `postgresql://DB_USER:ENCODED_PASSWORD@localhost/acuity_tutors?host=/cloudsql/PROJECT_ID:REGION:INSTANCE_ID&schema=public`. Percent-encode URL-reserved password characters. Keep all three values out of source control and browser variables.
+4. Apply committed migrations using a release step or one-off Cloud Run Job that has Cloud SQL attached and `DATABASE_URL` from Secret Manager. Run `npx prisma migrate deploy --schema prisma/schema.prisma`; do not run `prisma migrate dev` or destructive schema synchronization in production.
+5. Deploy the repository root with Cloud Run source deployment (Node.js buildpacks use the root workspace build/start scripts), attach the Cloud SQL instance, configure the runtime service account, and set `NODE_ENV=production`. For example:
+
+```powershell
+gcloud run deploy acuity-tutors `
+	--source . `
+	--region REGION `
+	--service-account SERVICE_ACCOUNT_EMAIL `
+	--add-cloudsql-instances PROJECT_ID:REGION:INSTANCE_ID `
+	--set-env-vars NODE_ENV=production `
+	--set-secrets DATABASE_URL=acuity-database-url:latest,JWT_SECRET=acuity-jwt-secret:latest,GEMINI_API_KEY=gemini-api-key:latest `
+	--allow-unauthenticated
+```
+
+The app provides its own JWT authentication, so `--allow-unauthenticated` allows requests to reach its login page; API authorization remains enforced by the app. Review this choice against organizational ingress policy before deployment. After deploying, verify `/api/health`, student/tutor sign-in, protected routes, Gemini generation, and Cloud SQL connectivity. Do not claim Cloud Run or Cloud SQL deployment is configured until these steps have actually succeeded.
+
 ## Current scaffold boundary
 
-This scaffold includes project structure, the initial relational schema, local database configuration, service health reporting, varied seeded demo history, JWT/bcrypt authentication, role-protected grouped mastery dashboards and progress views, transactional attempt logging with automatic score recomputation, deterministic mastery scoring, Gemini-generated saved practice questions with server-side grading, and roster-authorized tutor summaries. Roster enrollment management, broader quiz workflows, and Cloud deployment are not implemented or configured yet. Mastery must remain a deterministic calculation from append-only attempt history; generated AI content must not be treated as authoritative mastery data.
+The app includes authentication, student/tutor mastery dashboards with accuracy history, transactional attempt scoring, Gemini-generated saved practice questions with server-side grading, and roster-authorized tutor summaries. Roster enrollment management, broader quiz workflows, and Cloud deployment are not implemented or configured yet. Mastery must remain a deterministic calculation from append-only attempt history; generated AI content must not be treated as authoritative mastery data.
