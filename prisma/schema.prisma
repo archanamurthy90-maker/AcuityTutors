@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT
+  TUTOR
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum AttemptSource {
+  QUIZ
+  PRACTICE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  student      Student?
+  tutor        Tutor?
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+}
+
+model Student {
+  id               String          @id @default(cuid())
+  userId           String          @unique
+  displayName      String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tutorLinks       TutorStudent[]
+  quizAttempts     QuizAttempt[]
+  masteryScores    MasteryScore[]
+  practiceQuestions PracticeQuestion[]
+  createdAt        DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime        @updatedAt @db.Timestamptz(6)
+}
+
+model Tutor {
+  id          String         @id @default(cuid())
+  userId      String         @unique
+  displayName String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  studentLinks TutorStudent[]
+  createdAt   DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @db.Timestamptz(6)
+}
+
+model TutorStudent {
+  id        String   @id @default(cuid())
+  tutorId   String
+  studentId String
+  tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([tutorId, studentId])
+  @@index([studentId, tutorId])
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  topics    Topic[]
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+}
+
+model Topic {
+  id               String             @id @default(cuid())
+  subjectId        String
+  name             String
+  description      String?
+  subject          Subject            @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  quizAttempts     QuizAttempt[]
+  masteryScores    MasteryScore[]
+  practiceQuestions PracticeQuestion[]
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(6)
+
+  @@unique([subjectId, name])
+  @@index([subjectId])
+}
+
+model QuizAttempt {
+  id                String           @id @default(cuid())
+  studentId         String
+  topicId           String
+  practiceQuestionId String?
+  isCorrect         Boolean
+  response          String?
+  responseTimeMs    Int?
+  difficulty        Difficulty       @default(INTERMEDIATE)
+  source            AttemptSource    @default(QUIZ)
+  student           Student          @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  topic             Topic            @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  practiceQuestion  PracticeQuestion? @relation(fields: [practiceQuestionId], references: [id], onDelete: SetNull)
+  attemptedAt       DateTime         @default(now()) @db.Timestamptz(6)
+  createdAt         DateTime         @default(now()) @db.Timestamptz(6)
+
+  @@index([studentId, topicId, attemptedAt])
+  @@index([topicId, attemptedAt])
+  @@index([practiceQuestionId])
+}
+
+model MasteryScore {
+  id            String   @id @default(cuid())
+  studentId     String
+  topicId       String
+  score         Float
+  attemptCount  Int      @default(0)
+  confidence    Float    @default(0)
+  computedAt    DateTime @default(now()) @db.Timestamptz(6)
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([studentId, topicId])
+  @@index([topicId, score])
+  @@index([studentId, computedAt])
+}
+
+model PracticeQuestion {
+  id          String        @id @default(cuid())
+  studentId   String
+  topicId     String
+  prompt      String
+  choices     Json
+  correctAnswer String
+  explanation String
+  difficulty  Difficulty    @default(INTERMEDIATE)
+  model       String?
+  student     Student       @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  topic       Topic          @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  attempts    QuizAttempt[]
+  createdAt   DateTime       @default(now()) @db.Timestamptz(6)
+
+  @@index([studentId, topicId, createdAt])
+}

@@ -1,0 +1,26 @@
+{
+  "name": "acuity-tutors",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "build": "npm run build --workspace=server && npm run build --workspace=client",
+    "start": "npm run start --workspace=server",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema prisma/schema.prisma",
+    "db:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "db:studio": "prisma studio --schema prisma/schema.prisma"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prisma": "^6.19.0"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2"
+  }
+}
