@@ -109,7 +109,10 @@ footer span:first-child { font-weight: 700; letter-spacing: 1.2px; }
 .auth-panel-head h2 { font-size: 25px; }
 .auth-mark { color: var(--coral); font-family: var(--display); font-size: 23px; }
 .field-label { display: block; margin: 17px 0 7px; color: var(--ink); font-size: 12px; font-weight: 700; }
+.field-hint { margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.field-error { margin-top: 7px; }
 .auth-panel input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 3px; outline: none; background: #fdfdfa; color: var(--ink); font-size: 14px; }
+.auth-panel input[aria-invalid='true'] { border-color: var(--coral); }
 .auth-panel input:focus { border-color: var(--moss); box-shadow: 0 0 0 3px rgba(85, 116, 93, 0.13); }
 .role-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .role-fieldset legend { padding: 0; }

@@ -10,10 +10,18 @@ const sessionLifetimeSeconds = 60 * 60 * 8
 const sessionIssuer = 'acuity-tutors'
 const sessionAudience = 'acuity-tutors-web'
 
+export const registrationPasswordSchema = z.string()
+  .min(1, 'Enter a password.')
+  .max(128, 'Use 128 characters or fewer.')
+  .refine(
+    (password) => password.length >= 8 && /[a-z]/i.test(password) && /\d/.test(password),
+    'Use at least 8 characters, including a letter and a number.',
+  )
+
 const registerSchema = z.object({
   displayName: z.string().trim().min(2, 'Enter at least 2 characters.').max(80, 'Use 80 characters or fewer.'),
   email: z.string().trim().email('Enter a valid email address.').max(254),
-  password: z.string().min(8, 'Use at least 8 characters.').max(128, 'Use 128 characters or fewer.'),
+  password: registrationPasswordSchema,
   role: z.nativeEnum(UserRole),
 })
 

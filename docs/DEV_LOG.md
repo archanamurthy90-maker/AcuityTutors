@@ -141,6 +141,14 @@ The initial project structure was approved on 2026-09-30. Application feature im
 - Errors: The first full server build caught an apostrophe quoting error in the tutor prompt string; corrected and rebuilt successfully. Browser automation initially used a stale logged-in tab; opened a fresh page/session and completed the feature calls. No provider/API errors occurred during the live generation checks.
 - Time spent: Not tracked.
 
+## R3 Registration Password Rule
+
+- Timestamp: 2026-10-03T19:20:29-04:00
+- Prompt: Fix registration accepting a three-digit password; require 8+ characters with at least one letter and one number on both client and server, add automated tests, verify seeded login, update README, and commit with the requested R3 message.
+- Actions: Added a shared server registration Zod rule with the clear message “Use at least 8 characters, including a letter and a number.” Login validation remains unchanged. The registration form now shows the rule beneath the password input, marks weak values invalid, and blocks submit locally. Added unit tests rejecting short/no-letter/no-number passwords and accepting a valid password. Browser validation confirmed the hint and inline error appear for `123` without submitting. API tests confirmed `123` returns 400 and a valid password registers with 201; seeded Ava and tutor logins both remained 200. Removed the temporary valid test account. README now documents the rule and browser retest. `npm test --workspace=server` passed all 8 tests.
+- Errors: The first live API test could not connect because the dev server had stopped; restarted it and repeated the checks successfully. No seeded accounts or login code were changed.
+- Time spent: Not tracked.
+
 ## Complete Mastery Dashboards
 
 - Timestamp: 2026-10-01T17:27:04-04:00

@@ -49,6 +49,7 @@ type PracticeResult = {
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const registrationPasswordRule = 'Use at least 8 characters, including a letter and a number.'
 const AuthContext = createContext<{
   user: AuthUser | null
   setUser: (user: AuthUser | null) => void
@@ -119,6 +120,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordFieldError, setPasswordFieldError] = useState('')
   const [role, setRole] = useState<UserRole>('STUDENT')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -126,6 +128,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
+    setPasswordFieldError('')
 
     if (isRegister && displayName.trim().length < 2) {
       setError('Enter your name using at least 2 characters.')
@@ -135,8 +138,8 @@ function AuthPage({ mode }: { mode: AuthMode }) {
       setError('Enter a valid email address.')
       return
     }
-    if (isRegister && password.length < 8) {
-      setError('Use a password with at least 8 characters.')
+    if (isRegister && (password.length < 8 || !/[a-z]/i.test(password) || !/\d/.test(password))) {
+      setPasswordFieldError(registrationPasswordRule)
       return
     }
 
@@ -249,11 +252,18 @@ function AuthPage({ mode }: { mode: AuthMode }) {
               type="password"
               autoComplete={isRegister ? 'new-password' : 'current-password'}
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value)
+                setPasswordFieldError('')
+              }}
               minLength={isRegister ? 8 : undefined}
               maxLength={128}
+              aria-invalid={isRegister && Boolean(passwordFieldError)}
+              aria-describedby={isRegister ? passwordFieldError ? 'password-hint password-error' : 'password-hint' : undefined}
               required
             />
+            {isRegister && <p className="field-hint" id="password-hint">At least 8 characters, including a letter and a number.</p>}
+            {passwordFieldError && <p className="form-error field-error" id="password-error" role="alert">{passwordFieldError}</p>}
 
             {error && <p className="form-error" role="alert">{error}</p>}
 
