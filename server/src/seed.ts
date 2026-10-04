@@ -54,6 +54,11 @@ const subjectDefinitions = [
 ]
 
 async function main() {
+  // The seed writes publicly documented demo passwords; never run it against production by accident.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
+    throw new Error('Refusing to seed demo accounts with NODE_ENV=production. Set ALLOW_DEMO_SEED=true only for a disposable demo database.')
+  }
+
   const tutorPasswordHash = await bcrypt.hash(demoTutor.password, 12)
   const tutor = await prisma.user.upsert({
     where: { email: demoTutor.email },

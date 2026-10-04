@@ -24,7 +24,9 @@ A full-stack tutoring-center application foundation for focused practice and dur
 | `JWT_SECRET` | `server/.env` / Secret Manager | JWT signing secret; use a random value of at least 32 characters. |
 | `GEMINI_API_KEY` | `server/.env` / Secret Manager | Server-only Gemini API credential. Never prefix it with `VITE_`. |
 | `PORT` | `server/.env` / Cloud Run runtime | Express listen port; defaults to `3001` locally. Cloud Run supplies this automatically. |
-| `NODE_ENV` | process environment | Set to `production` in deployment to enable secure cookies and static frontend serving. |
+| `NODE_ENV` | process environment | Set to `production` in deployment to enable secure cookies, static frontend serving, `trust proxy`, the minimal health response, and redacted error logs. |
+| `CLIENT_ORIGIN` | `server/.env` / Cloud Run env | Comma-separated CORS allowlist for browser origins; defaults to `http://localhost:5173`. Same-host requests are always allowed. |
+| `ALLOW_DEMO_SEED` | process environment | Set to `true` only to run the demo seed against a disposable database while `NODE_ENV=production`; the seed refuses otherwise. |
 | `VITE_API_BASE_URL` | `client/.env` | Browser API base; defaults to same-origin `/api`. Safe for client exposure. |
 | `VITE_API_PROXY_TARGET` | Vite process environment | Optional development proxy target; defaults to `http://localhost:3001`. |
 | `POSTGRES_PASSWORD` | root `.env`, Docker only | Optional Compose database password; Compose defaults to `acuity_local_dev` for local use. |
@@ -52,7 +54,7 @@ npm run dev
 
 If `psql` is on PATH, the full executable path can be replaced with `psql`. Update the path above if a different PostgreSQL major version was installed. The API and Prisma commands load their settings from `server/.env`.
 
-Open the Vite client at `http://localhost:5173`; the Express API is at `http://localhost:3001`, and `GET /api/health` checks the live database connection as well as configuration.
+Open the Vite client at `http://localhost:5173`; the Express API is at `http://localhost:3001`, and in local development `GET /api/health` checks the live database connection as well as configuration (in production it returns only `{"status":"ok"}`).
 
 ## Optional Docker Compose database
 
@@ -86,9 +88,11 @@ The seed creates bcrypt-hashed local demo accounts. Tutor: `tutor@acuity.local` 
 
 ## Authentication
 
-Open `http://localhost:5173/login` and use a seeded account above. Students land on `/student`; tutors land on `/tutor`. Enter a seeded email with a wrong password to verify the form displays “Email or password is incorrect.” Use the “Create an account” link to test registration, choose a role, and submit a name, email, and password with at least 8 characters, one letter, and one number. The register form shows this rule under the password field and blocks weak values; the server enforces the same rule and returns HTTP 400 if bypassed. Login behavior is unchanged. Successful registration creates a bcrypt-hashed account and signs it in. Student and tutor pages show mastery data; students can record a correct/incorrect quiz result to see their score recalculate.
+Open `http://localhost:5173/login` and use a seeded account above. Students land on `/student`; tutors land on `/tutor`. Enter a seeded email with a wrong password to verify the form displays “Email or password is incorrect.” Use the “Create an account” link to test registration: public registration creates **student accounts only** (the API returns 403 for any other role; tutors come from the seed script). Submit a name, email, and password with at least 8 characters (at most 72), one letter, and one number. The register form shows this rule under the password field and blocks weak values; the server enforces the same rule and returns HTTP 400 if bypassed. Login behavior is unchanged. Successful registration creates a bcrypt-hashed account and signs it in. Student and tutor pages show mastery data; students can record a correct/incorrect quiz result to see their score recalculate.
 
-The API provides `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me`. `GET /api/student/dashboard` and `GET /api/tutor/dashboard` require an authenticated session and enforce the matching role. Sessions use an eight-hour HttpOnly, SameSite=Strict JWT cookie. Passwords are hashed with bcrypt; login errors do not disclose whether an email exists. An expired session token returns 401 with code `SESSION_EXPIRED` and the message “Your session has expired, please sign in again.”; any 401 from a protected request signs the browser out and shows that message on the sign-in page.
+The API provides `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me`. `GET /api/student/dashboard` and `GET /api/tutor/dashboard` require an authenticated session and enforce the matching role. Sessions use an eight-hour HttpOnly, SameSite=Strict JWT cookie whose claims are only the user ID and role. Passwords are hashed with bcrypt; login errors do not disclose whether an email exists. An expired session token returns 401 with code `SESSION_EXPIRED` and the message “Your session has expired, please sign in again.”; any 401 from a protected request signs the browser out and shows that message on the sign-in page.
+
+**Security controls:** See `docs/SECURITY_AUDIT.md` and `docs/SECURITY_CHECKLIST.md`. helmet sets a strict Content-Security-Policy (`'self'` only, no inline scripts or styles), `X-Frame-Options: DENY`, HSTS, and `nosniff`. CORS allows only `CLIENT_ORIGIN` (or the same host), and cross-origin writes are rejected with 403. Rate limits return 429 with a friendly message: sign-in (10 failed attempts per IP and email, 100 per IP, per 15 minutes; successful sign-ins don't count), registration (20 accounts per IP per hour), practice questions (20 per student per 10 minutes), and tutor summaries (30 per tutor per 10 minutes). Counters are in memory per server instance; use a shared store before running several instances. JSON bodies are limited to 100 KB. The demo seed refuses to run with `NODE_ENV=production`.
 
 **Error handling:** Malformed JSON request bodies return 400 with a clear message. Database connection failures return 503 with a friendly message; details are logged on the server only. Other unexpected errors return a generic 500. If the React UI crashes while rendering, an error boundary shows a friendly fallback page with a reload button instead of a blank screen.
 

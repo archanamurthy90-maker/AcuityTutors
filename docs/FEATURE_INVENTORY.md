@@ -1,6 +1,6 @@
 # Feature Inventory — Acuity Tutors
 
-Every page, button, form, API endpoint, and user workflow in the app as of commit `b09e195` (2026-10-04). Each feature has an ID; [TEST_CHECKLIST.md](TEST_CHECKLIST.md) references these IDs in its **Feature** column so coverage can be traced.
+Every page, button, form, API endpoint, and user workflow in the app (2026-10-04, updated for Phase 4 security changes). Each feature has an ID; [TEST_CHECKLIST.md](TEST_CHECKLIST.md) references these IDs in its **Feature** column so coverage can be traced.
 
 **Pages (client routes):** `/login`, `/register`, `/student`, `/tutor`. `/` and any unknown path redirect to the signed-in user's dashboard, or to `/login` when signed out. Every page is wrapped in the error boundary (UI-1).
 
@@ -11,15 +11,15 @@ Every page, button, form, API endpoint, and user workflow in the app as of commi
 | ID | Feature | Where | Details |
 |---|---|---|---|
 | AUTH-1 | Sign-in page | `/login` | **Form:** Email address, Password. **Button:** "Sign in" (shows "Please wait…" and is disabled while submitting). **Link:** "Create an account" → `/register`. Footer note: "Your password is securely hashed before it is stored." Client checks email format before sending; server errors appear in an alert box. A wrong email or password shows the same generic "Email or password is incorrect." |
-| AUTH-2 | Registration page | `/register` | **Form:** Full name (2–80 chars), "I am joining as" toggle **buttons** Student / Tutor, Email address, Password with the hint "At least 8 characters, including a letter and a number." **Button:** "Create account". **Link:** "Sign in" → `/login`. A duplicate email returns "An account with this email already exists." On success the user is signed in and sent to their dashboard. |
-| AUTH-3 | Password policy and hashing | Client + `POST /api/auth/register` | 8–128 characters with at least one letter and one number, enforced on both client and server (R3 fix). Passwords are hashed with bcrypt (cost 12) and never returned. |
+| AUTH-2 | Registration page (students only) | `/register` | **Form:** Full name (2–80 chars), Email address, Password with the hint "At least 8 characters, including a letter and a number." The note "This creates a student account. Tutor access is set up by Acuity Tutors." replaces the old Student/Tutor toggle (removed in Phase 4, SEC-23). **Button:** "Create account". **Link:** "Sign in" → `/login`. A duplicate email returns "An account with this email already exists." On success the student is signed in and sent to `/student`. Tutors come only from the seed script. |
+| AUTH-3 | Password policy and hashing | Client + `POST /api/auth/register` | Registration requires 8 characters to 72 bytes (bcrypt's input limit; emoji count as more than one) with at least one letter and one number, enforced on client and server (R3, SEC-07). Login accepts up to 128 characters. Passwords are hashed with bcrypt (cost 12) and never returned. Unknown-email logins run a dummy bcrypt comparison so timing does not reveal accounts (SEC-09). |
 | AUTH-4 | Role-based redirects | Client router | After sign-in or registration: students go to `/student`, tutors to `/tutor`. `/` and unknown paths redirect by role, or to `/login` when signed out. |
 | AUTH-5 | Client route guards | `/student`, `/tutor` | A signed-out visitor is sent to `/login`. A user who opens the other role's page is sent back to their own dashboard. |
-| AUTH-6 | Session cookie | Server | An 8-hour HS256 JWT in the `acuity_session` cookie: HttpOnly, SameSite=Strict, Secure in production. The issuer and audience are checked. Refreshing the page keeps the session (via `GET /api/auth/me`). |
+| AUTH-6 | Session cookie | Server | An 8-hour HS256 JWT in the `acuity_session` cookie: HttpOnly, SameSite=Strict, Secure in production. The issuer and audience are checked. Claims are only the user ID (`sub`) and `role`, with no email (SEC-04). Refreshing the page keeps the session (via `GET /api/auth/me`). |
 | AUTH-7 | Logout | "Log out" button in both dashboard headers | Calls `POST /api/auth/logout`, clears the cookie, and returns to `/login`. The button reads "Signing out…" while working. |
 | AUTH-8 | Session-expired behavior (BUG-01, BUG-02) | Server `requireAuth` + client `apiFetch` | The server returns 401 with code `SESSION_EXPIRED` ("Your session has expired, please sign in again."), `SESSION_INVALID`, or `AUTH_REQUIRED`, and clears the cookie for an expired or invalid token. On page load, a `SESSION_EXPIRED` response from `/auth/me` shows that message on the sign-in page. While signed in, **any** 401 from a protected request signs the user out and shows the same message. Login, register, and logout do not trigger this, so a wrong password is not mistaken for an expired session. |
 | AUTH-9 | Server role and ownership enforcement | All protected routes | `requireAuth` + `requireRole` return 401 or 403. Students can access only their own data. A tutor can access only students linked through `TutorStudent`; any other student returns 404. URL IDs must be valid CUIDs, otherwise the server returns 400. |
-| AUTH-10 | Auth API | `/api/auth/*` | `POST /register` (201, 400 validation, 409 duplicate, 503 if `JWT_SECRET` is missing). `POST /login` (200, 400, 401). `POST /logout` (204). `GET /me` (200 user, or 401 with a code). |
+| AUTH-10 | Auth API | `/api/auth/*` | `POST /register` (201 student; 400 validation; 403 for any role other than STUDENT; 409 duplicate; 429 rate limit; 503 if `JWT_SECRET` is missing). `POST /login` (200, 400, 401, 429 rate limit). `POST /logout` (204). `GET /me` (200 user, or 401 with a code). |
 
 ## Student
 
@@ -70,11 +70,12 @@ There is **no admin role or admin UI**. Operational tasks are done through the c
 
 | ID | Feature | Where | Details |
 |---|---|---|---|
-| ADM-1 | Health check | `GET /api/health` (public) | Returns `status`, `databaseConfigured`, `databaseConnected` (live `SELECT 1`), and `geminiConfigured`. |
-| ADM-2 | Environment configuration | `server/.env` (from `server/.env.example`), `client/.env.example` | `DATABASE_URL`, `JWT_SECRET` (≥32 chars), `GEMINI_API_KEY`, `PORT`, `NODE_ENV`, `VITE_API_BASE_URL`, `VITE_API_PROXY_TARGET`. Secrets are server-only. |
+| ADM-1 | Health check | `GET /api/health` (public) | Production: only `{"status":"ok"}` (SEC-25). Local development: also `databaseConfigured`, `databaseConnected` (live `SELECT 1`), and `geminiConfigured`. |
+| ADM-2 | Environment configuration | `server/.env` (from `server/.env.example`), `client/.env.example` | `DATABASE_URL`, `JWT_SECRET` (≥32 chars), `GEMINI_API_KEY`, `PORT`, `NODE_ENV`, `CLIENT_ORIGIN` (CORS allowlist), `ALLOW_DEMO_SEED` (seed override, disposable databases only), `VITE_API_BASE_URL`, `VITE_API_PROXY_TARGET`. Secrets are server-only. |
 | ADM-3 | Developer scripts | Root `package.json` | `npm run dev`, `build`, `start`, `test`, `lint`, `db:generate`, `db:migrate`, `db:deploy`, `db:seed`, `db:studio` (Prisma Studio for inspecting data). |
 | ADM-4 | Production serving | `server/src/index.ts` | With `NODE_ENV=production`, Express serves `client/dist` with an SPA fallback. Cloud Run / Cloud SQL deployment is documented but **not configured**. |
 | ADM-5 | Repository hygiene | `.gitignore`, docs | `.env` files are not committed. README, `docs/DEV_LOG.md`, and `docs/IMPROVEMENT_LOG.md` are kept current. |
+| ADM-6 | Security middleware | `server/src/middleware/security.ts`, `rateLimits.ts` | helmet headers with a strict CSP (`'self'` only, no `unsafe-inline`), `X-Frame-Options: DENY`, HSTS, and `nosniff`. CORS limited to `CLIENT_ORIGIN` or the same host, with foreign-origin writes → 403. Rate limits → 429: login (10 failures per IP + email, 100 per IP / 15 min), register (20 accounts per IP / hour, 100 requests / 15 min), practice questions (20 per student / 10 min), summaries (30 per tutor / 10 min). `trust proxy` in production. 100 KB JSON body limit. |
 
 ## Cross-cutting UI and error handling
 
@@ -92,7 +93,7 @@ There is **no admin role or admin UI**. Operational tasks are done through the c
 
 | ID | Workflow | Steps | Features |
 |---|---|---|---|
-| WF-1 | First-time student | Register as Student → land on `/student` → see empty-state guidance → practice and logging are disabled until topics exist | AUTH-2, AUTH-3, AUTH-4, STU-8 |
+| WF-1 | First-time student | Register (student accounts only) → land on `/student` → see empty-state guidance → practice and logging are disabled until topics exist | AUTH-2, AUTH-3, AUTH-4, STU-8 |
 | WF-2 | Returning student practice | Sign in → review mastery, weakest topic, and chart → Generate question → choose an option → Check answer → see feedback and updated mastery → New question | AUTH-1, STU-2–STU-5, AI-1, AI-2, DB-3 |
 | WF-3 | Log a quiz result | On `/student`, choose a topic → Correct/Incorrect → Save attempt → that topic's row and the status message update | STU-6, DB-2, DB-3 |
 | WF-4 | Tutor roster review | Sign in as tutor → scan topics needing attention → open a student's detail → Generate summary → collapse | AUTH-1, TUT-2–TUT-4, AI-3 |

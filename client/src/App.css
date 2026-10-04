@@ -114,12 +114,7 @@ footer span:first-child { font-weight: 700; letter-spacing: 1.2px; }
 .auth-panel input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 3px; outline: none; background: #fdfdfa; color: var(--ink); font-size: 14px; }
 .auth-panel input[aria-invalid='true'] { border-color: var(--coral); }
 .auth-panel input:focus { border-color: var(--moss); box-shadow: 0 0 0 3px rgba(85, 116, 93, 0.13); }
-.role-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
-.role-fieldset legend { padding: 0; }
-.role-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.role-option { min-height: 39px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--white); color: var(--muted); cursor: pointer; font-size: 13px; }
-.role-option.selected { border-color: var(--moss); background: #eff4ed; color: #34523b; font-weight: 700; }
-.role-option:focus-visible, .submit-button:focus-visible, .logout-button:focus-visible, .auth-switch a:focus-visible { outline: 3px solid rgba(85, 116, 93, 0.28); outline-offset: 2px; }
+.submit-button:focus-visible, .logout-button:focus-visible, .auth-switch a:focus-visible { outline: 3px solid rgba(85, 116, 93, 0.28); outline-offset: 2px; }
 .form-error { margin: 15px 0 0; padding: 10px 12px; border-left: 3px solid var(--coral); background: #fbefec; color: #843f35; font-size: 12px; line-height: 1.55; }
 .submit-button { width: 100%; min-height: 46px; display: flex; justify-content: space-between; align-items: center; margin-top: 23px; padding: 0 15px; border: 1px solid var(--moss); border-radius: 3px; background: var(--moss); color: var(--white); cursor: pointer; font-size: 13px; font-weight: 700; }
 .submit-button:hover:not(:disabled) { background: #45644d; }

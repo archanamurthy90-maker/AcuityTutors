@@ -2,6 +2,7 @@ import { AttemptSource, Difficulty, Prisma, PrismaClient, UserRole } from '@pris
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth, requireRole } from '../auth.js'
+import { createAiRateLimiters } from '../middleware/rateLimits.js'
 import { GEMINI_MODEL, generatePracticeQuestion, generateTutorSummary } from '../services/gemini.js'
 import { recalculateTopicMastery } from '../services/mastery.js'
 
@@ -25,10 +26,10 @@ function questionDifficulty(status: keyof typeof weaknessRank) {
   }
 }
 
-export function createGeminiRouter(prisma: PrismaClient) {
+export function createGeminiRouter(prisma: PrismaClient, limits = createAiRateLimiters()) {
   const router = Router()
 
-  router.post('/student/practice-questions', requireAuth, requireRole(UserRole.STUDENT), async (_request, response, next) => {
+  router.post('/student/practice-questions', requireAuth, requireRole(UserRole.STUDENT), limits.practiceQuestions, async (_request, response, next) => {
     try {
       const auth = response.locals.auth as { sub: string }
       const student = await prisma.student.findUnique({ where: { userId: auth.sub }, select: { id: true } })
@@ -164,7 +165,7 @@ export function createGeminiRouter(prisma: PrismaClient) {
     }
   })
 
-  router.post('/tutor/students/:studentId/summary', requireAuth, requireRole(UserRole.TUTOR), async (request, response, next) => {
+  router.post('/tutor/students/:studentId/summary', requireAuth, requireRole(UserRole.TUTOR), limits.summaries, async (request, response, next) => {
     try {
       const auth = response.locals.auth as { sub: string }
       const studentId = studentIdSchema.safeParse(request.params.studentId)

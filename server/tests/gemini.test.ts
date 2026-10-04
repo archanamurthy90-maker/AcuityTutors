@@ -51,3 +51,21 @@ test('maps rate limits and timeouts to friendly errors without exposing provider
   assert.equal(timeoutError.statusCode, 504)
   assert.match(timeoutError.publicMessage, /too long/i)
 })
+
+test('BUG-07: Interactions API errors (APIError subclasses with a status) map to the right friendly error', () => {
+  // Shape of the Interactions client's RateLimitError: not an ApiError instance, numeric status.
+  class InteractionsApiError extends Error {
+    constructor(readonly status: number, message: string) {
+      super(message)
+      this.name = status === 429 ? 'RateLimitError' : 'APIError'
+    }
+  }
+  const quota = mapProviderError(new InteractionsApiError(429, '429 Rate limit exceeded for model (limit: 20 requests per day on Free Tier)'))
+  assert.equal(quota.statusCode, 429)
+  assert.equal(quota.publicMessage, 'The AI tutor is receiving many requests. Please wait a moment and try again.')
+  assert.doesNotMatch(quota.publicMessage, /Free Tier|limit:/)
+
+  assert.equal(mapProviderError(new InteractionsApiError(403, 'API key not valid')).statusCode, 503)
+  assert.equal(mapProviderError(new InteractionsApiError(500, 'backend error')).statusCode, 503)
+  assert.equal(mapProviderError(new Error('something unexpected')).statusCode, 502)
+})

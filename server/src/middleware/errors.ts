@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import type { ErrorRequestHandler } from 'express'
+import type { ErrorRequestHandler, Request } from 'express'
 import { GeminiServiceError } from '../services/gemini.js'
 
 export const invalidJsonMessage = 'The request body is not valid JSON. Check the data and try again.'
@@ -26,7 +26,23 @@ function bodyParserError(error: unknown): { status: number; type: string } | nul
   return { status, type }
 }
 
-export const apiErrorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
+// Prisma and provider messages can echo query values such as emails, so production
+// logs keep only the error type, code, and route. Development logs the full error.
+export function logApiError(label: string, error: unknown, request: Request) {
+  if (process.env.NODE_ENV !== 'production') {
+    console.error(label, error)
+    return
+  }
+  const { name, code } = (typeof error === 'object' && error !== null ? error : {}) as { name?: unknown; code?: unknown }
+  console.error(label, JSON.stringify({
+    name: typeof name === 'string' ? name : typeof error,
+    code: typeof code === 'string' ? code : undefined,
+    method: request.method,
+    path: request.route?.path ?? request.path,
+  }))
+}
+
+export const apiErrorHandler: ErrorRequestHandler = (error, request, response, _next) => {
   if (error instanceof GeminiServiceError) {
     response.status(error.statusCode).json({ error: error.publicMessage })
     return
@@ -44,11 +60,11 @@ export const apiErrorHandler: ErrorRequestHandler = (error, _request, response, 
   }
 
   if (isDatabaseUnavailableError(error)) {
-    console.error('Database unavailable:', error)
+    logApiError('Database unavailable:', error, request)
     response.status(503).json({ error: databaseUnavailableMessage })
     return
   }
 
-  console.error('Unhandled API error:', error)
+  logApiError('Unhandled API error:', error, request)
   response.status(500).json({ error: unexpectedErrorMessage })
 }

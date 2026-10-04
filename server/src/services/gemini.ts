@@ -73,16 +73,26 @@ function createClient() {
   return new GoogleGenAI({ apiKey, httpOptions: { timeout: requestTimeoutMs } })
 }
 
+// The models API throws ApiError, but the Interactions API throws its own APIError
+// subclasses (e.g. RateLimitError); both expose a numeric HTTP `status`.
+function providerStatus(error: unknown): number | null {
+  if (error instanceof ApiError) return error.status
+  const status = typeof error === 'object' && error !== null ? (error as { status?: unknown }).status : undefined
+  return typeof status === 'number' ? status : null
+}
+
 export function mapProviderError(error: unknown): GeminiServiceError {
   if (error instanceof GeminiServiceError) return error
-  if (error instanceof ApiError && error.status === 429) {
-    return new GeminiServiceError(429, 'The AI tutor is receiving many requests. Please wait a moment and try again.', error.message)
+  const status = providerStatus(error)
+  const detail = error instanceof Error ? error.message : 'Unknown Gemini error.'
+  if (status === 429) {
+    return new GeminiServiceError(429, 'The AI tutor is receiving many requests. Please wait a moment and try again.', detail)
   }
-  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-    return new GeminiServiceError(503, 'AI practice is temporarily unavailable. Please contact your tutor.', error.message)
+  if (status === 401 || status === 403) {
+    return new GeminiServiceError(503, 'AI practice is temporarily unavailable. Please contact your tutor.', detail)
   }
-  if (error instanceof ApiError && error.status >= 500) {
-    return new GeminiServiceError(503, 'The AI tutor is temporarily unavailable. Please try again shortly.', error.message)
+  if (status !== null && status >= 500) {
+    return new GeminiServiceError(503, 'The AI tutor is temporarily unavailable. Please try again shortly.', detail)
   }
   if (error instanceof Error && /timeout|aborted/i.test(`${error.name} ${error.message}`)) {
     return new GeminiServiceError(504, 'The AI tutor took too long to respond. Please try again.', error.message)

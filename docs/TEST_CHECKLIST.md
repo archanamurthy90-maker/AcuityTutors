@@ -9,6 +9,7 @@ Manual test checklist covering every feature in [FEATURE_INVENTORY.md](FEATURE_I
 - **Expired token for B1–B2:** from the `server/` folder run `node -e "require('dotenv').config({path:'.env'});console.log(require('jsonwebtoken').sign({email:'ava@acuity.local',role:'STUDENT'},process.env.JWT_SECRET,{subject:'x',expiresIn:-60,issuer:'acuity-tutors',audience:'acuity-tutors-web'}))"` and use the output as the `acuity_session` cookie value.
 - **Recording a failure:** put what happened in Notes and report it as: "Test [ID] failed: [what you did] → [what happened]."
 - **API run (2026-10-04):** cases marked **Pass (API)** passed the server-side part; their note says what still needs a browser check. The API cases are automated in `server/scripts/api-checklist.ts` (`npm run test:api --workspace=server` with the API running). That run creates and then deletes temporary accounts; afterwards run `npm run db:seed` to restore the baseline. Cases needing a different server config (E1, E2, E3, B13, SEC6, X21) were run on temporary instances on ports 3102–3106, which were stopped afterwards.
+- **Phase 4 (security):** SEC2–SEC4 now pass and SEC8–SEC15 were added; see `docs/SECURITY_AUDIT.md`. X22 and W3 changed because tutor self-registration was removed and the password limit is now 72.
 - **Likely failures:** cases marked "⚠ Expected to fail" describe the behaviour the app *should* have but probably does not yet. They were found while writing this checklist and have not been fixed (no code was changed in this phase).
 
 ## 1. Setup and administration
@@ -46,7 +47,7 @@ Manual test checklist covering every feature in [FEATURE_INVENTORY.md](FEATURE_I
 | O4 | AUTH-6 Press F5 on a dashboard while logged in | Stays logged in | Authentication | | Plan O4 (Pass) |
 | X15 | AUTH-6 DevTools → Application → Cookies after sign-in | `acuity_session` is HttpOnly, SameSite=Strict, and expires about 8 hours after sign-in; `document.cookie` in the console does not show it | Security | | New. Secure flag applies only with `NODE_ENV=production`. |
 | X16 | AUTH-10 Signed out: `fetch('/api/auth/me')`; signed in: `fetch('/api/auth/logout',{method:'POST'})` | `/me` → 401 with `code: "AUTH_REQUIRED"`; logout → 204 and the cookie is cleared | API | Pass | New 2026-10-04 run: `/me` 401 `AUTH_REQUIRED`; logout 204 and cookie cleared. |
-| X22 | AUTH-2/TUT-3 Register choosing the Tutor role toggle | Lands on `/tutor` with "No students are linked to your roster yet." | Functional | | New. See SEC3 about open tutor registration. |
+| X22 | AUTH-2 Register page: look for a Tutor option, then register | No Tutor/Student toggle; the note "This creates a student account. Tutor access is set up by Acuity Tutors." is shown; the new account lands on `/student` | Functional | | Changed in Phase 4 (SEC-23): previously tested registering as a Tutor. `client/tests/register.test.tsx` covers it automatically; browser check still to do. |
 
 ## 3. Role access and security
 
@@ -181,7 +182,7 @@ Use DevTools device mode (F12 → phone/tablet icon).
 |---|---|---|---|---|---|
 | W1 | AUTH-2 Very long text: paste 500 characters into Full name | The input stops at 80; if sent through the API with 81+, 400 "Use 80 characters or fewer." | Functional | Pass (API) | New 2026-10-04 run: API: 81 chars → 400 "Use 80 characters or fewer." Browser: check the input stops at 80. |
 | W2 | AUTH-1/AUTH-2 Very long text: a 300-character email | The input stops at 254; the API returns 400 for longer values; no 500 | Functional | Pass (API) | New 2026-10-04 run: API: register and login both 400. Browser: check the 254 input limit. |
-| W3 | AUTH-3 Very long text: a 200-character password | The input stops at 128; the API returns 400 for 129+ | Security | Pass (API) | New 2026-10-04 run: API: 129 chars → 400. Browser: check the 128 input limit. |
+| W3 | AUTH-3 Very long text: a 200-character password | On the register page the input stops at 72 (login: 128); the API returns 400 for longer registration passwords | Security | Pass (API) | New 2026-10-04 run: API: 129 chars → 400. Browser: check the 128 input limit. 2026-10-04 Phase 4: registration limit is now 72 bytes (SEC-07; see SEC10). |
 | W4 | AI-2 Very long text: answer a question through the API with a 5,000-character `answer` | 400 validation error; no attempt saved | API | Pass | New 2026-10-04 run: 400. |
 | W5 | STU-7 Very long text: `POST /api/student/attempts` with a 2,000-character `response` | 400 validation error | API | Pass | New 2026-10-04 run: 400. |
 | W6 | AUTH-2/STU-1 Emoji: register with name `Ava 🚀📚` | Account created; the name displays correctly in the dashboard header | Functional | Pass (API) | New 2026-10-04 run: API: 201 and `/me` returns `Ava 🚀📚`. Browser: check the header display. |
@@ -234,27 +235,35 @@ Use DevTools device mode (F12 → phone/tablet icon).
 
 | ID | Feature | Expected result | Test type | Pass/Fail | Notes |
 |---|---|---|---|---|---|
-| SEC1 | ADM-1 Open `/api/health` signed out | Only booleans and `status`; no secrets, versions, or connection strings | Security | Pass | New 2026-10-04 run: Only `status` + three booleans. |
-| SEC2 | AUTH-1 Try 20 wrong passwords for Ava within a minute | Further attempts are slowed or blocked (rate limit, 429) | Security | Fail | New. ⚠ Expected to fail: no rate limiting. 2026-10-04 run: 20 wrong logins all 401, no 429. Deferred to the security phase. |
-| SEC3 | AUTH-2 Register as Tutor with no invite | Tutor accounts should require approval or an invite | Security | Fail | New. ⚠ Expected to fail: anyone can self-register as Tutor. Needs a product decision. 2026-10-04 run: Self-registered tutor → 201. Deferred to the security phase. |
-| SEC4 | ADM-4 Inspect the response headers of `/` and `/api/health` | Security headers present (for example `X-Content-Type-Options: nosniff`, `Content-Security-Policy`, `X-Frame-Options`/`frame-ancestors`); no `X-Powered-By` | Security | Fail | New. ⚠ Expected to fail for the headers (no helmet); `X-Powered-By` is already disabled. 2026-10-04 run: No CSP / nosniff / frame headers (`X-Powered-By` correctly absent). Deferred to the security phase. |
-| SEC5 | ADM-3 Run `npm audit` | 0 vulnerabilities | Security | Pass | New 2026-10-04 run: 0 vulnerabilities. |
+| SEC1 | ADM-1 Open `/api/health` signed out | Production (`NODE_ENV=production`): only `{"status":"ok"}`. Local development: `status` plus three booleans; never secrets, versions, or connection strings | Security | Pass | Phase 3: dev mode returned only booleans. 2026-10-04 Phase 4: production returns only `{"status":"ok"}` (`security.test.ts`, and port 3106 production instance); the dev API still returns the detailed check. Audit SEC-25. |
+| SEC2 | AUTH-1 Try 12 wrong passwords for one email within a minute | Attempts 1–10 → 401; the 11th → 429 "Too many sign-in attempts. Please wait 15 minutes and try again."; other accounts (e.g. Ava) can still sign in | Security | Fail → Pass (SEC-22) | Phase 3: 20 wrong logins all 401. 2026-10-04 Phase 4: live `test:api`: 401×10 then 429 from attempt 11; Ava sign-in afterwards 200. Automated in `security.test.ts` (per account, per IP, register, AI). Audit SEC-22. |
+| SEC3 | AUTH-2 Register as Tutor (API with `"role":"TUTOR"`; the register page has no Tutor option) | 403 "Public registration creates student accounts only. Tutor accounts are set up by Acuity Tutors."; no account created | Security | Fail → Pass (SEC-23) | Phase 3: self-registered tutor → 201. 2026-10-04 Phase 4: live 403, user count unchanged; `security.test.ts` and `client/tests/register.test.tsx`. 1 tutor self-registered before the fix still exists locally (audit SEC-32). |
+| SEC4 | ADM-6 Inspect the response headers of `/` and `/api/health` | `Content-Security-Policy` (`default-src 'self'`, `script-src 'self'`, `style-src 'self'`, `frame-ancestors 'none'`, no `unsafe-inline`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`; no `X-Powered-By` | Security | Fail → Pass (SEC-24) | Phase 3: no security headers. 2026-10-04 Phase 4: all present on the dev API and the production build; `security.test.ts`. Audit SEC-24. |
+| SEC5 | ADM-3 Run `npm audit` | 0 vulnerabilities | Security | Pass | Phase 3: 0. 2026-10-04 Phase 4: 0 vulnerabilities after adding helmet, cors, and express-rate-limit. |
 | SEC6 | AUTH-10 Remove `JWT_SECRET` (or make it shorter than 32 characters), restart, then sign in | 503 "Authentication is not configured on this server."; no crash | Security | Pass | New. Restore the secret afterwards. 2026-10-04 run: Short `JWT_SECRET` → login 503 "Authentication is not configured on this server." |
 | SEC7 | AUTH-2 Sign-in and registration copy | Security wording is accurate: "Your password is securely hashed before it is stored." | Security | Fail → Pass (BUG-06) | New. The page said "encrypted"; passwords are hashed (bcrypt). 2026-10-04 run: Text now reads "Your password is securely hashed before it is stored." Client test checks it; quick visual check on `/login` still useful. |
+| SEC8 | ADM-6 CORS: `fetch` from another origin, and POST with a foreign `Origin` header | Foreign origin gets no `Access-Control-Allow-Origin`; foreign-origin POST → 403 "Cross-origin requests are not allowed."; `http://localhost:5173` (or `CLIENT_ORIGIN`) is allowed with credentials | Security | Pass | New. 2026-10-04 Phase 4: live `test:api` and `security.test.ts`. Audit SEC-26. |
+| SEC9 | AUTH-9 IDOR: change IDs in URLs and bodies (another student's ID in `?studentId=` or the attempt body; a non-roster student for tutor progress/summary; another student's question) | Data is always scoped to the session user or roster: own data only, otherwise 404 with no data and no Gemini call | Security | Pass | New. 2026-10-04 Phase 4: 5 automated IDOR tests in `security.test.ts` check query scoping; live X9, W24. Audit SEC-16. |
+| SEC10 | AUTH-3 Register with a 73-character ASCII password, or 2 characters + 18 emoji | 400 "Use 72 characters or fewer (emoji count as more than one)."; the register input stops at 72 | Security | Pass | New. 2026-10-04 Phase 4: `security.test.ts` (API); browser input limit still to check. Audit SEC-07. |
+| SEC11 | AUTH-6 Decode the `acuity_session` JWT (e.g. jwt.io) after signing in | Payload has only `sub`, `role`, `iat`, `exp`, `iss`, `aud`; no email | Security | Pass | New. 2026-10-04 Phase 4: `security.test.ts`. Audit SEC-04. |
+| SEC12 | UI-2 Trigger a server error with `NODE_ENV=production` and read the server log | The log line has only error name, code, method, and route; no email or query values | Security | Pass | New. 2026-10-04 Phase 4: `security.test.ts`. Audit SEC-20. |
+| SEC13 | DB-4 Run `npm run db:seed` with `NODE_ENV=production` | Refuses: "Refusing to seed demo accounts with NODE_ENV=production…"; no data changed | Security | Pass | New. 2026-10-04 Phase 4: verified with `NODE_ENV=production npm run db:seed`. Audit SEC-13. |
+| SEC14 | AUTH-1 Time three wrong-password logins for an unknown email and for Ava (`curl -w %{time_total}`) | Similar times, so response time does not reveal whether an account exists | Security | Pass | New. 2026-10-04 Phase 4: unknown 0.89–1.09 s, Ava 0.79–0.95 s. Audit SEC-09. |
+| SEC15 | ADM-6 Production build in a browser (`npm run build`, then `NODE_ENV=production` API): open `/login`, sign in, view `/student` and `/tutor`, expand a student | No CSP violations in the console; styles load; dashboards and both Recharts charts render | Security | Pass | New. 2026-10-04 Phase 4: headless Edge over the DevTools protocol against port 3106: login page, student dashboard and chart, tutor dashboard and student chart rendered; 0 CSP violations, 0 console errors. A manual look is still worthwhile. Audit SEC-24. |
 
 ## Coverage by feature
 
 | Feature ID | Tests |
 |---|---|
-| AUTH-1 | L1–L7, W2, W10, W13, W14, W19, W27, AX1, SEC2, V2 |
+| AUTH-1 | L1–L7, W2, W10, W13, W14, W19, W27, AX1, SEC2, SEC14, V2 |
 | AUTH-2 | R1, R2, R4, X22, W1, W6, W7, W9, W12, W15, W17, W28, SEC3, SEC7 |
-| AUTH-3 | R3, A6, W3, W8, W11 |
+| AUTH-3 | R3, A6, W3, W8, W11, SEC10 |
 | AUTH-4 | L1, L2, E5, W25 |
 | AUTH-5 | O2, O3, A1, A2 |
-| AUTH-6 | O4, X15 |
+| AUTH-6 | O4, X15, SEC11 |
 | AUTH-7 | O1, W34 |
 | AUTH-8 | B1–B9, AX4 |
-| AUTH-9 | A3, A4, X17 |
+| AUTH-9 | A3, A4, X17, SEC9 |
 | AUTH-10 | X16, SEC6 |
 | STU-1 | D1, W6, W17 |
 | STU-2 | D2 |
@@ -277,17 +286,18 @@ Use DevTools device mode (F12 → phone/tablet icon).
 | DB-1 | X19 |
 | DB-2 | S5, X23 |
 | DB-3 | M1–M9 |
-| DB-4 | X20 |
+| DB-4 | X20, SEC13 |
 | DB-5 | E3, B13 |
 | ADM-1 | S3, E2, E3, SEC1 |
 | ADM-2 | G3 |
 | ADM-3 | S1, S2, S4, G2, SEC5 |
-| ADM-4 | X21, SEC4 |
+| ADM-4 | X21 |
 | ADM-5 | G1, G4 |
+| ADM-6 | SEC2, SEC4, SEC8, SEC15 |
 | UI-1 | B10, B11, W35, AX7 |
-| UI-2 | X18, B12, B14, B15 |
+| UI-2 | X18, B12, B14, B15, SEC12 |
 | UI-3 | E4 |
 | UI-4 | V1–V5, B11, AX8 |
 | UI-5 | AX1–AX8 |
 
-**Totals:** 72 reused plan cases + 23 X + 15 B + 35 W + 10 AX + 7 SEC = **162 cases**.
+**Totals:** 72 reused plan cases + 23 X + 15 B + 35 W + 10 AX + 15 SEC = **170 cases**.

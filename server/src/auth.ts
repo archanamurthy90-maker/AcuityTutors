@@ -1,19 +1,26 @@
 import bcrypt from 'bcryptjs'
+import { randomUUID } from 'node:crypto'
 import cookieParser from 'cookie-parser'
 import { Router, type RequestHandler } from 'express'
 import jwt, { type JwtPayload } from 'jsonwebtoken'
 import { Prisma, PrismaClient, UserRole } from '@prisma/client'
 import { z } from 'zod'
+import { createAuthRateLimiters } from './middleware/rateLimits.js'
 
 export const sessionCookieName = 'acuity_session'
 const sessionLifetimeSeconds = 60 * 60 * 8
 const sessionIssuer = 'acuity-tutors'
 const sessionAudience = 'acuity-tutors-web'
 export const sessionExpiredMessage = 'Your session has expired, please sign in again.'
+export const studentOnlyRegistrationMessage = 'Public registration creates student accounts only. Tutor accounts are set up by Acuity Tutors.'
+const bcryptCost = 12
+// bcrypt ignores input beyond 72 bytes, so longer passwords would be silently truncated.
+const bcryptMaxBytes = 72
 
 export const registrationPasswordSchema = z.string()
   .min(1, 'Enter a password.')
   .max(128, 'Use 128 characters or fewer.')
+  .refine((password) => Buffer.byteLength(password, 'utf8') <= bcryptMaxBytes, 'Use 72 characters or fewer (emoji count as more than one).')
   .refine(
     (password) => password.length >= 8 && /[a-z]/i.test(password) && /\d/.test(password),
     'Use at least 8 characters, including a letter and a number.',
@@ -23,7 +30,6 @@ const registerSchema = z.object({
   displayName: z.string().trim().min(2, 'Enter at least 2 characters.').max(80, 'Use 80 characters or fewer.'),
   email: z.string().trim().email('Enter a valid email address.').max(254),
   password: registrationPasswordSchema,
-  role: z.nativeEnum(UserRole),
 })
 
 const loginSchema = z.object({
@@ -33,8 +39,20 @@ const loginSchema = z.object({
 
 type SessionClaims = JwtPayload & {
   sub: string
-  email: string
   role: UserRole
+}
+
+// Compared against when the email is unknown so both login paths take similar time.
+const timingEqualizerHash = bcrypt.hash(randomUUID(), bcryptCost)
+
+function signSession(user: { id: string; role: UserRole }, secret: string) {
+  return jwt.sign({ role: user.role }, secret, {
+    subject: user.id,
+    expiresIn: sessionLifetimeSeconds,
+    issuer: sessionIssuer,
+    audience: sessionAudience,
+    algorithm: 'HS256',
+  })
 }
 
 type PublicUser = {
@@ -81,10 +99,19 @@ function setSessionCookie(response: Parameters<RequestHandler>[1], token: string
   })
 }
 
-export function createAuthRouter(prisma: PrismaClient) {
+export function isPublicRegistrationRoleAllowed(role: unknown) {
+  return role === undefined || role === UserRole.STUDENT
+}
+
+export function createAuthRouter(prisma: PrismaClient, limits = createAuthRateLimiters()) {
   const router = Router()
 
-  router.post('/register', async (request, response, next) => {
+  router.post('/register', ...limits.register, async (request, response, next) => {
+    if (!isPublicRegistrationRoleAllowed((request.body as { role?: unknown } | undefined)?.role)) {
+      response.status(403).json({ error: studentOnlyRegistrationMessage })
+      return
+    }
+
     const parsed = registerSchema.safeParse(request.body)
     if (!parsed.success) {
       sendValidationError(response, parsed.error.issues)
@@ -97,21 +124,16 @@ export function createAuthRouter(prisma: PrismaClient) {
       return
     }
 
-    const { displayName, password, role } = parsed.data
+    const { displayName, password } = parsed.data
     const email = parsed.data.email.toLowerCase()
 
     try {
-      const passwordHash = await bcrypt.hash(password, 12)
+      const passwordHash = await bcrypt.hash(password, bcryptCost)
       const user = await prisma.$transaction(async (transaction) => {
         const createdUser = await transaction.user.create({
-          data: { email, passwordHash, role },
+          data: { email, passwordHash, role: UserRole.STUDENT },
         })
-
-        if (role === UserRole.STUDENT) {
-          await transaction.student.create({ data: { userId: createdUser.id, displayName } })
-        } else {
-          await transaction.tutor.create({ data: { userId: createdUser.id, displayName } })
-        }
+        await transaction.student.create({ data: { userId: createdUser.id, displayName } })
 
         return transaction.user.findUniqueOrThrow({
           where: { id: createdUser.id },
@@ -119,13 +141,7 @@ export function createAuthRouter(prisma: PrismaClient) {
         })
       })
 
-      const token = jwt.sign({ email: user.email, role: user.role }, secret, {
-        subject: user.id,
-        expiresIn: sessionLifetimeSeconds,
-        issuer: sessionIssuer,
-        audience: sessionAudience,
-        algorithm: 'HS256',
-      })
+      const token = signSession(user, secret)
       setSessionCookie(response, token)
       response.status(201).json({ user: toPublicUser(user) })
     } catch (error) {
@@ -137,7 +153,7 @@ export function createAuthRouter(prisma: PrismaClient) {
     }
   })
 
-  router.post('/login', async (request, response, next) => {
+  router.post('/login', ...limits.login, async (request, response, next) => {
     const parsed = loginSchema.safeParse(request.body)
     if (!parsed.success) {
       sendValidationError(response, parsed.error.issues)
@@ -157,18 +173,13 @@ export function createAuthRouter(prisma: PrismaClient) {
         include: { student: true, tutor: true },
       })
 
-      if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
+      const passwordMatches = await bcrypt.compare(parsed.data.password, user?.passwordHash ?? await timingEqualizerHash)
+      if (!user || !passwordMatches) {
         response.status(401).json({ error: 'Email or password is incorrect.' })
         return
       }
 
-      const token = jwt.sign({ email: user.email, role: user.role }, secret, {
-        subject: user.id,
-        expiresIn: sessionLifetimeSeconds,
-        issuer: sessionIssuer,
-        audience: sessionAudience,
-        algorithm: 'HS256',
-      })
+      const token = signSession(user, secret)
       setSessionCookie(response, token)
       response.json({ user: toPublicUser(user) })
     } catch (error) {
@@ -228,7 +239,6 @@ export const requireAuth: RequestHandler = (request, response, next) => {
     if (
       typeof decoded === 'string' ||
       !decoded.sub ||
-      typeof decoded.email !== 'string' ||
       (decoded.role !== UserRole.STUDENT && decoded.role !== UserRole.TUTOR)
     ) {
       response.clearCookie(sessionCookieName, { path: '/' })

@@ -87,9 +87,11 @@ async function main() {
     note: JSON.stringify(health.body),
   }))
   await check('SEC1', async () => {
+    // Production returns only {status:"ok"} (covered by server/tests/security.test.ts); this checks the running app.
     const keys = Object.keys(health.body).sort().join(',')
     const onlyBooleans = Object.entries(health.body).every(([key, value]) => key === 'status' || typeof value === 'boolean')
-    return { pass: keys === 'databaseConfigured,databaseConnected,geminiConfigured,status' && onlyBooleans, note: `keys: ${keys}` }
+    const expected = keys === 'status' || (keys === 'databaseConfigured,databaseConnected,geminiConfigured,status' && onlyBooleans)
+    return { pass: expected, note: `keys: ${keys} (${keys === 'status' ? 'production' : 'development'} mode)` }
   })
 
   // Access control
@@ -272,21 +274,36 @@ async function main() {
 
   // Deferred security checks (recorded, fixed in a later phase)
   await check('SEC3', async () => {
+    const usersBefore = await prisma.user.count()
     const result = await register({ role: 'TUTOR', displayName: 'QA Tutor' })
-    return { pass: result.status !== 201, note: `self-registered tutor: ${result.status}` }
+    const usersAfter = await prisma.user.count()
+    return { pass: result.status === 403 && usersAfter === usersBefore, note: `role TUTOR → ${describe(result)}; users ${usersBefore}→${usersAfter}` }
   })
   await check('SEC4', async () => {
     const result = await api('GET', '/api/health')
-    const present = ['x-content-type-options', 'content-security-policy', 'x-frame-options'].filter((name) => result.headers.has(name))
+    const present = ['x-content-type-options', 'content-security-policy', 'x-frame-options', 'strict-transport-security'].filter((name) => result.headers.has(name))
     const poweredBy = result.headers.has('x-powered-by')
-    return { pass: present.length === 3 && !poweredBy, note: `security headers present: [${present.join(', ')}]; x-powered-by present: ${poweredBy}` }
+    return { pass: present.length === 4 && !poweredBy, note: `security headers present: [${present.join(', ')}]; x-powered-by present: ${poweredBy}` }
+  })
+  await check('SEC8', async () => {
+    const response = await fetch(`${apiUrl}/api/health`, { headers: { origin: 'https://evil.example' } })
+    const write = await fetch(`${apiUrl}/api/auth/login`, { method: 'POST', headers: { origin: 'https://evil.example', 'Content-Type': 'application/json' }, body: '{}' })
+    const allowed = await fetch(`${apiUrl}/api/health`, { headers: { origin: 'http://localhost:5173' } })
+    return {
+      pass: response.headers.get('access-control-allow-origin') === null && write.status === 403 && allowed.headers.get('access-control-allow-origin') === 'http://localhost:5173',
+      note: `foreign GET ACAO: ${response.headers.get('access-control-allow-origin')}; foreign POST: ${write.status}; client origin ACAO: ${allowed.headers.get('access-control-allow-origin')}`,
+    }
   })
   await check('SEC2', async () => {
+    // A throwaway email so the per-account limit never locks a demo account.
+    const target = `${runTag}-bruteforce@example.com`
     const statuses: number[] = []
-    for (let index = 0; index < 20; index += 1) {
-      statuses.push((await api('POST', '/api/auth/login', { body: { email: 'ava@acuity.local', password: `Wrong${index}!` } })).status)
+    for (let index = 0; index < 12; index += 1) {
+      statuses.push((await api('POST', '/api/auth/login', { body: { email: target, password: `Wrong${index}!` } })).status)
     }
-    return { pass: statuses.includes(429), note: `20 wrong logins → ${[...new Set(statuses)].join('/')}` }
+    const firstLimited = statuses.indexOf(429) + 1
+    const demoStillWorks = (await api('POST', '/api/auth/login', { body: { email: 'ava@acuity.local', password: 'StudentDemo!2026' } })).status
+    return { pass: firstLimited === 11 && demoStillWorks === 200, note: `12 wrong logins → ${statuses.join(',')} (429 from attempt ${firstLimited}); Ava sign-in afterwards: ${demoStillWorks}` }
   })
 
   // Practice questions (Gemini)
@@ -336,8 +353,11 @@ async function main() {
     }
   })
   await check('W24', async () => {
-    const noahCookie = await login('noah@acuity.local', 'StudentDemo!2026')
-    const noahQuestion = (await generate(noahCookie)).body.practiceQuestion as { id: string; options: string[] }
+    // Reuse an unanswered question of Noah's when one exists, to save Gemini quota.
+    const existing = await prisma.practiceQuestion.findFirst({ where: { student: { user: { email: 'noah@acuity.local' } }, attempt: null }, select: { id: true, choices: true } })
+    const noahQuestion = existing
+      ? { id: existing.id, options: existing.choices as string[] }
+      : (await generate(await login('noah@acuity.local', 'StudentDemo!2026'))).body.practiceQuestion as { id: string; options: string[] }
     const result = await answerQuestion(noahQuestion.id, noahQuestion.options[0], avaCookie)
     return { pass: result.status === 404 && result.body.error === 'Practice question not found.' && await linkedAttempts(noahQuestion.id) === 0, note: describe(result) }
   })

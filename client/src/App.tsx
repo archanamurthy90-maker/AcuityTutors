@@ -137,7 +137,6 @@ function AuthPage({ mode }: { mode: AuthMode }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passwordFieldError, setPasswordFieldError] = useState('')
-  const [role, setRole] = useState<UserRole>('STUDENT')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -158,6 +157,10 @@ function AuthPage({ mode }: { mode: AuthMode }) {
       setPasswordFieldError(registrationPasswordRule)
       return
     }
+    if (isRegister && new TextEncoder().encode(password).length > 72) {
+      setPasswordFieldError('Use 72 characters or fewer (emoji count as more than one).')
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -168,7 +171,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
         body: JSON.stringify({
           email: email.trim(),
           password,
-          ...(isRegister ? { displayName: displayName.trim(), role } : {}),
+          ...(isRegister ? { displayName: displayName.trim() } : {}),
         }),
       })
       const data = (await response.json()) as {
@@ -233,22 +236,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
                   maxLength={80}
                   required
                 />
-                <fieldset className="role-fieldset">
-                  <legend className="field-label">I am joining as</legend>
-                  <div className="role-options">
-                    {(['STUDENT', 'TUTOR'] as const).map((option) => (
-                      <button
-                        className={`role-option ${role === option ? 'selected' : ''}`}
-                        key={option}
-                        type="button"
-                        aria-pressed={role === option}
-                        onClick={() => setRole(option)}
-                      >
-                        {option === 'STUDENT' ? 'Student' : 'Tutor'}
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
+                <p className="field-hint registration-scope">This creates a student account. Tutor access is set up by Acuity Tutors.</p>
               </>
             )}
 
@@ -274,7 +262,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
                 setPasswordFieldError('')
               }}
               minLength={isRegister ? 8 : undefined}
-              maxLength={128}
+              maxLength={isRegister ? 72 : 128}
               aria-invalid={isRegister && Boolean(passwordFieldError)}
               aria-describedby={isRegister ? passwordFieldError ? 'password-hint password-error' : 'password-hint' : undefined}
               required
