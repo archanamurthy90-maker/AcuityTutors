@@ -50,6 +50,7 @@ const tutorRoutes: Record<string, Route> = {
   '/tutor/dashboard': [200, { message: 'Your tutor workspace is ready.' }],
   '/tutor/mastery': [200, { students: [{ id: 'cjld2cjxh0000qzrmn831ava1', displayName: 'Ava Chen', email: 'ava@acuity.local', scores }], totalScores: 4 }],
   '/tutor/students/cjld2cjxh0000qzrmn831ava1/progress': [200, { progress }],
+  '/tutor/question-reports': [200, { reports: [{ id: 'r1', reason: 'The marked answer is wrong.', createdAt: '2026-10-04T12:00:00Z', student: { id: 'cjld2cjxh0000qzrmn831ava1', displayName: 'Ava Chen' }, practiceQuestion: { prompt: question.question, choices: question.options, correctAnswer: 'Nucleus', explanation: 'The nucleus stores DNA.', difficulty: 'BEGINNER', topic: { name: 'Life Science', subject: { name: 'Science' } } } }] }],
 }
 
 // jsdom cannot compute rendered colours, so contrast is checked in the token test below and in the browser.

@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react
 import './App.css'
 import { apiBaseUrl, apiFetch, sessionNoticeFromMe, setUnauthorizedHandler } from './lib/api.js'
 import { describeProgress } from './lib/progress.js'
+import { AiLabel, MasteryExplainer, ReportedQuestions, ReportQuestion } from './components/ResponsibleAi.js'
 
 const AccuracyChart = lazy(() => import('./components/AccuracyChart.js').then((module) => ({ default: module.AccuracyChart })))
 
@@ -644,6 +645,7 @@ function WorkspacePage() {
               {groupedScores.length === 0 ? <p className="empty-mastery">Your topic breakdown will appear after your first quiz attempt.</p> : (
                 <GroupedMastery scores={scores} groupedScores={groupedScores} />
               )}
+              <MasteryExplainer />
             </section>
 
             <ProgressChart progress={studentProgress} loading={progressLoading} error={progressError} title="Accuracy over time" />
@@ -655,13 +657,14 @@ function WorkspacePage() {
                     {generatingQuestion ? 'Creating…' : generatedQuestion ? 'New question' : 'Generate question'}
                   </button>
                 </div>
-                <p className="ai-practice-intro">Gemini makes a fresh question at a difficulty matched to your current mastery.</p>
+                <p className="ai-practice-intro">Gemini, an AI model, writes a fresh question at a difficulty matched to your current mastery. AI questions can contain mistakes, so report any that look wrong.</p>
                 {scores.length === 0 && <p className="practice-empty-note">Log your first quiz attempt before generating targeted practice.</p>}
                 {weakest && <div className="weakest-topic-cue"><span>TOP PRIORITY</span><strong>{weakest.topic.subject.name} · {weakest.topic.name}</strong><span className={`mastery-status mastery-status-${weakest.status.toLowerCase().replaceAll('_', '-')}`}>{statusLabel(weakest.status)}</span></div>}
                 {practiceError && <p className="data-error" role="alert">{practiceError}</p>}
                 {generatedQuestion && (
                   <div className="generated-question">
                     <div className="question-meta"><span>{generatedQuestion.topic}</span><span>{difficultyLabel(generatedQuestion.difficulty)}</span></div>
+                    <AiLabel>AI-generated question — may contain mistakes.</AiLabel>
                     <h3 id="practice-question" ref={questionHeadingRef} tabIndex={-1}>{generatedQuestion.question}</h3>
                     <form onSubmit={handlePracticeSubmit}>
                       <fieldset className="practice-options" disabled={Boolean(practiceResult) || submittingAnswer} aria-describedby="practice-question">
@@ -679,11 +682,13 @@ function WorkspacePage() {
                           <strong>{practiceResult.isCorrect ? 'Correct' : 'Not quite'}<span className="visually-hidden">.</span></strong>
                           <p>Answer: {practiceResult.correctAnswer}</p>
                           <p>{practiceResult.explanation}</p>
+                          <AiLabel>AI-generated explanation — may contain mistakes. Your score is calculated by the app, not the AI.</AiLabel>
                           <small>Mastery is now {practiceResult.mastery.accuracy?.toFixed(1)}% · {statusLabel(practiceResult.mastery.status)}</small>
                         </div>
                       )}
                       {!practiceResult && <button className="submit-button practice-submit" type="submit" disabled={!selectedAnswer || submittingAnswer} aria-busy={submittingAnswer}>{submittingAnswer ? 'Checking…' : 'Check answer'} {!submittingAnswer && <span aria-hidden="true">&#8594;</span>}</button>}
                     </form>
+                    <ReportQuestion key={generatedQuestion.id} questionId={generatedQuestion.id} />
                   </div>
                 )}
               </section>
@@ -735,6 +740,8 @@ function WorkspacePage() {
               )}
             </section>
 
+            <ReportedQuestions />
+
             <section className="roster-section" aria-labelledby="roster-title">
               <div className="mastery-section-heading">
                 <div><p className="eyebrow">ROSTER CLASSIFICATION</p><h2 id="roster-title">Student overview</h2></div>
@@ -766,7 +773,13 @@ function WorkspacePage() {
                         {summaryLoadingId === student.id ? 'Writing summary…' : tutorSummaries[student.id] ? 'Refresh summary' : 'Generate summary'}
                       </button>
                       {summaryErrors[student.id] && <p className="form-error" role="alert">{summaryErrors[student.id]}</p>}
-                      {tutorSummaries[student.id] && <p className="tutor-summary" role="status">{tutorSummaries[student.id]}</p>}
+                      {tutorSummaries[student.id] && (
+                        <div className="tutor-summary" role="status">
+                          <p className="tutor-summary-title">Suggested next steps</p>
+                          <p>{tutorSummaries[student.id]}</p>
+                          <AiLabel>AI-generated suggestions — may contain mistakes. You make the final decision about this student's plan.</AiLabel>
+                        </div>
+                      )}
                     </div>
                     {isSelected && (
                       <section className="student-detail" id={`detail-panel-${student.id}`} aria-labelledby={`detail-${student.id}`}>

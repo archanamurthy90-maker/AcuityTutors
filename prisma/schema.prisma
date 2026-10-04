@@ -47,6 +47,7 @@ model Student {
   displayName      String
   user             User            @relation(fields: [userId], references: [id], onDelete: Restrict)
   tutorLinks       TutorStudent[]
+  questionReports  QuestionReport[]
   quizAttempts     QuizAttempt[]
   masteryScores    MasteryScore[]
   practiceQuestions PracticeQuestion[]
@@ -152,7 +153,21 @@ model PracticeQuestion {
   student     Student       @relation(fields: [studentId], references: [id], onDelete: Restrict)
   topic       Topic          @relation(fields: [topicId], references: [id], onDelete: Restrict)
   attempt     QuizAttempt?
+  report      QuestionReport?
   createdAt   DateTime       @default(now()) @db.Timestamptz(6)
 
   @@index([studentId, topicId, createdAt])
+}
+
+// A student's flag on an AI-generated practice question, reviewed by their tutors.
+model QuestionReport {
+  id                 String           @id @default(cuid())
+  practiceQuestionId String           @unique // one report per question
+  studentId          String
+  reason             String?          @db.VarChar(300)
+  practiceQuestion   PracticeQuestion @relation(fields: [practiceQuestionId], references: [id], onDelete: Restrict)
+  student            Student          @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  createdAt          DateTime         @default(now()) @db.Timestamptz(6)
+
+  @@index([studentId, createdAt])
 }

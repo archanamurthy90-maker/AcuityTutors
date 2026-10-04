@@ -4,6 +4,7 @@ import { PrismaClient, UserRole } from '@prisma/client'
 import { createAuthRouter, cookieMiddleware, requireAuth, requireRole } from './auth.js'
 import { createGeminiRouter } from './routes/gemini.js'
 import { createMasteryRouter } from './routes/mastery.js'
+import { createReportsRouter } from './routes/reports.js'
 import { apiErrorHandler } from './middleware/errors.js'
 import { createAiRateLimiters, createAuthRateLimiters, type RateLimitSettings } from './middleware/rateLimits.js'
 import { corsPolicy, rejectCrossOriginWrites, securityHeaders } from './middleware/security.js'
@@ -54,6 +55,7 @@ export function createApp(prisma: PrismaClient, options: AppOptions = {}) {
   app.use('/api/auth', createAuthRouter(prisma, createAuthRateLimiters(options.rateLimits)))
   app.use('/api', createMasteryRouter(prisma))
   app.use('/api', createGeminiRouter(prisma, createAiRateLimiters(options.rateLimits)))
+  app.use('/api', createReportsRouter(prisma))
 
   app.get('/api/student/dashboard', requireAuth, requireRole(UserRole.STUDENT), (_request, response) => {
     response.json({ role: UserRole.STUDENT, message: 'Your student workspace is ready.' })
