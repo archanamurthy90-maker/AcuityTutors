@@ -2,7 +2,10 @@
   --paper: #f7f8f3;
   --white: #fff;
   --ink: #202a24;
-  --muted: #737b72;
+  --muted: #646c63; /* ≥4.8:1 on every page and panel background */
+  --coral-text: #a8503f; /* coral for text: 5.1:1 */
+  --line-input: #858e83; /* form control borders: ≥3.3:1 */
+  --focus: #2f4a37; /* focus outline: ≥7:1 on light backgrounds */
   --moss: #55745d;
   --coral: #bd6452;
   --gold: #b58c3e;
@@ -23,5 +26,12 @@
 * { box-sizing: border-box; }
 body { min-width: 320px; min-height: 100vh; margin: 0; }
 a { color: inherit; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
+
+/* One consistent, high-contrast focus indicator for every interactive element. */
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+#main-content:focus { outline: none; }
+
+.skip-link { position: absolute; top: -100px; left: 16px; z-index: 100; padding: 10px 14px; border-radius: 3px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 700; text-decoration: none; }
+.skip-link:focus { top: 12px; }
 #root { min-height: 100vh; }

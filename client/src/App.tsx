@@ -1,7 +1,8 @@
-import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type HTMLAttributes, type ReactNode } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import './App.css'
 import { apiBaseUrl, apiFetch, sessionNoticeFromMe, setUnauthorizedHandler } from './lib/api.js'
+import { describeProgress } from './lib/progress.js'
 
 const AccuracyChart = lazy(() => import('./components/AccuracyChart.js').then((module) => ({ default: module.AccuracyChart })))
 
@@ -107,11 +108,21 @@ function rolePath(role: UserRole) {
 
 function LoadingPage() {
   return (
-    <main className="loading-page" aria-live="polite">
+    <main className="loading-page" role="status" aria-live="polite">
       <span className="brand-mark" aria-hidden="true"><i /><i /><i /><i /></span>
       <p>Loading your workspace</p>
     </main>
   )
+}
+
+function SkipLink() {
+  return <a className="skip-link" href="#main-content">Skip to main content</a>
+}
+
+function usePageTitle(title: string) {
+  useEffect(() => {
+    document.title = `${title} · Acuity Tutors`
+  }, [title])
 }
 
 function AuthRoute({ mode }: { mode: AuthMode }) {
@@ -129,6 +140,9 @@ function RoleRoute({ role }: { role: UserRole }) {
   return <WorkspacePage />
 }
 
+type AuthField = 'displayName' | 'email' | 'password'
+const authFieldLabels: Record<AuthField, string> = { displayName: 'Full name', email: 'Email address', password: 'Password' }
+
 function AuthPage({ mode }: { mode: AuthMode }) {
   const { setUser, sessionNotice } = useAuth()
   const navigate = useNavigate()
@@ -136,31 +150,44 @@ function AuthPage({ mode }: { mode: AuthMode }) {
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [passwordFieldError, setPasswordFieldError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({})
+  const [errorSummary, setErrorSummary] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const displayNameRef = useRef<HTMLInputElement>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  usePageTitle(isRegister ? 'Create account' : 'Sign in')
+
+  function validate(): Partial<Record<AuthField, string>> {
+    const errors: Partial<Record<AuthField, string>> = {}
+    if (isRegister && displayName.trim().length < 2) errors.displayName = 'Enter your name using at least 2 characters.'
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errors.email = 'Enter a valid email address.'
+    if (!isRegister && password.length === 0) errors.password = 'Enter your password.'
+    else if (isRegister && (password.length < 8 || !/[a-z]/i.test(password) || !/\d/.test(password))) errors.password = registrationPasswordRule
+    else if (isRegister && new TextEncoder().encode(password).length > 72) errors.password = 'Use 72 characters or fewer (emoji count as more than one).'
+    return errors
+  }
+
+  // Mark the fields, announce a summary, and move focus to the first field to fix.
+  function showFieldErrors(errors: Partial<Record<AuthField, string>>) {
+    setFieldErrors(errors)
+    const invalid = (['displayName', 'email', 'password'] as const).filter((field) => errors[field])
+    setErrorSummary(invalid.length ? `Check ${invalid.length === 1 ? 'this field' : 'these fields'}: ${invalid.map((field) => authFieldLabels[field]).join(', ')}.` : '')
+    const fieldRefs = { displayName: displayNameRef, email: emailRef, password: passwordRef }
+    if (invalid.length) fieldRefs[invalid[0]].current?.focus()
+  }
+
+  function clearFieldError(field: AuthField) {
+    setFieldErrors((current) => ({ ...current, [field]: undefined }))
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
-    setPasswordFieldError('')
-
-    if (isRegister && displayName.trim().length < 2) {
-      setError('Enter your name using at least 2 characters.')
-      return
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError('Enter a valid email address.')
-      return
-    }
-    if (isRegister && (password.length < 8 || !/[a-z]/i.test(password) || !/\d/.test(password))) {
-      setPasswordFieldError(registrationPasswordRule)
-      return
-    }
-    if (isRegister && new TextEncoder().encode(password).length > 72) {
-      setPasswordFieldError('Use 72 characters or fewer (emoji count as more than one).')
-      return
-    }
+    const errors = validate()
+    showFieldErrors(errors)
+    if (Object.keys(errors).length) return
 
     setSubmitting(true)
     try {
@@ -181,8 +208,12 @@ function AuthPage({ mode }: { mode: AuthMode }) {
       }
 
       if (!response.ok || !data.user) {
-        const detail = data.details?.[0]?.message
-        setError(detail ? `${data.error ?? 'Please check your details.'} ${detail}` : data.error ?? 'Unable to continue. Try again.')
+        const serverErrors: Partial<Record<AuthField, string>> = {}
+        for (const detail of data.details ?? []) {
+          if (detail.field in authFieldLabels) serverErrors[detail.field as AuthField] ??= detail.message
+        }
+        showFieldErrors(serverErrors)
+        setError(data.error ?? 'Unable to continue. Try again.')
         return
       }
 
@@ -195,8 +226,11 @@ function AuthPage({ mode }: { mode: AuthMode }) {
     }
   }
 
+  const describedBy = (field: AuthField, hintId?: string) => [hintId, fieldErrors[field] ? `${field}-error` : ''].filter(Boolean).join(' ') || undefined
+
   return (
     <div className="auth-shell">
+      <SkipLink />
       <header className="topbar">
         <Link className="brand" to="/" aria-label="Acuity Tutors home">
           <span className="brand-mark" aria-hidden="true"><i /><i /><i /><i /></span>
@@ -205,7 +239,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
         <span className="environment-label">LEARNING WORKSPACE</span>
       </header>
 
-      <main className="auth-layout">
+      <main className="auth-layout" id="main-content" tabIndex={-1}>
         <section className="auth-intro">
           <p className="eyebrow">A CLEARER PATH TO MASTERY</p>
           <h1>{isRegister ? 'Make room for better practice.' : 'Good to have you back.'}</h1>
@@ -224,18 +258,26 @@ function AuthPage({ mode }: { mode: AuthMode }) {
           </div>
           {sessionNotice && <p className="session-notice" role="status">{sessionNotice}</p>}
 
-          <form onSubmit={handleSubmit} noValidate>
+          <form onSubmit={handleSubmit} noValidate aria-describedby={error ? 'form-error' : undefined}>
+            <p className="visually-hidden" role="alert">{errorSummary}</p>
             {isRegister && (
               <>
                 <label className="field-label" htmlFor="displayName">Full name</label>
                 <input
                   id="displayName"
+                  ref={displayNameRef}
                   autoComplete="name"
                   value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
+                  onChange={(event) => {
+                    setDisplayName(event.target.value)
+                    clearFieldError('displayName')
+                  }}
                   maxLength={80}
+                  aria-invalid={Boolean(fieldErrors.displayName)}
+                  aria-describedby={describedBy('displayName')}
                   required
                 />
+                <FieldError id="displayName-error" message={fieldErrors.displayName} />
                 <p className="field-hint registration-scope">This creates a student account. Tutor access is set up by Acuity Tutors.</p>
               </>
             )}
@@ -243,39 +285,48 @@ function AuthPage({ mode }: { mode: AuthMode }) {
             <label className="field-label" htmlFor="email">Email address</label>
             <input
               id="email"
+              ref={emailRef}
               type="email"
               autoComplete="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value)
+                clearFieldError('email')
+              }}
               maxLength={254}
+              aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={describedBy('email')}
               required
             />
+            <FieldError id="email-error" message={fieldErrors.email} />
 
             <label className="field-label" htmlFor="password">Password</label>
             <input
               id="password"
+              ref={passwordRef}
               type="password"
               autoComplete={isRegister ? 'new-password' : 'current-password'}
               value={password}
               onChange={(event) => {
                 setPassword(event.target.value)
-                setPasswordFieldError('')
+                clearFieldError('password')
               }}
               minLength={isRegister ? 8 : undefined}
               maxLength={isRegister ? 72 : 128}
-              aria-invalid={isRegister && Boolean(passwordFieldError)}
-              aria-describedby={isRegister ? passwordFieldError ? 'password-hint password-error' : 'password-hint' : undefined}
+              aria-invalid={Boolean(fieldErrors.password)}
+              aria-describedby={describedBy('password', isRegister ? 'password-hint' : undefined)}
               required
             />
             {isRegister && <p className="field-hint" id="password-hint">At least 8 characters, including a letter and a number.</p>}
-            {passwordFieldError && <p className="form-error field-error" id="password-error" role="alert">{passwordFieldError}</p>}
+            <FieldError id="password-error" message={fieldErrors.password} />
 
-            {error && <p className="form-error" role="alert">{error}</p>}
+            {error && <p className="form-error" id="form-error" role="alert">{error}</p>}
 
             <button className="submit-button" type="submit" disabled={submitting} aria-busy={submitting}>
-              {submitting ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'}
+              {submitting ? (isRegister ? 'Creating account…' : 'Signing in…') : isRegister ? 'Create account' : 'Sign in'}
               {!submitting && <span aria-hidden="true">&#8594;</span>}
             </button>
+            <p className="visually-hidden" role="status">{submitting ? (isRegister ? 'Creating your account…' : 'Signing in…') : ''}</p>
           </form>
 
           <p className="auth-switch">
@@ -288,6 +339,11 @@ function AuthPage({ mode }: { mode: AuthMode }) {
       <footer className="auth-footer"><span>ACUITY TUTORS</span><span>Focused practice starts with a clear picture.</span></footer>
     </div>
   )
+}
+
+function FieldError({ id, message }: { id: string; message?: string }) {
+  if (!message) return null
+  return <p className="form-error field-error" id={id}>{message}</p>
 }
 
 function WorkspacePage() {
@@ -320,6 +376,18 @@ function WorkspacePage() {
   const [selectedStudentProgress, setSelectedStudentProgress] = useState<TopicProgress[]>([])
   const [studentProgressLoading, setStudentProgressLoading] = useState(false)
   const [studentProgressError, setStudentProgressError] = useState('')
+  const [announcement, setAnnouncement] = useState('')
+  const questionHeadingRef = useRef<HTMLHeadingElement>(null)
+  const feedbackRef = useRef<HTMLDivElement>(null)
+  usePageTitle(user?.role === 'TUTOR' ? 'Tutor dashboard' : 'Student dashboard')
+
+  // Move focus to the new question, then to the feedback once it is graded.
+  useEffect(() => {
+    if (generatedQuestion) questionHeadingRef.current?.focus()
+  }, [generatedQuestion])
+  useEffect(() => {
+    if (practiceResult) feedbackRef.current?.focus()
+  }, [practiceResult])
 
   useEffect(() => {
     if (!user) return
@@ -330,6 +398,7 @@ function WorkspacePage() {
     async function loadWorkspace() {
       setDataLoading(true)
       setDataError('')
+      setAnnouncement('Loading mastery data…')
       try {
         const [dashboardResponse, masteryResponse] = await Promise.all([
           apiFetch(`/${role}/dashboard`),
@@ -347,6 +416,7 @@ function WorkspacePage() {
         }
 
         if (!active) return
+        setAnnouncement('Mastery data loaded.')
         setMessage(dashboardData.message ?? 'Your workspace is ready.')
         if (currentRole === 'STUDENT') setScores(masteryData.scores ?? [])
         else setStudents(masteryData.students ?? [])
@@ -401,6 +471,8 @@ function WorkspacePage() {
   }, [user, selectedStudentId])
 
   function handleSelectStudent(studentId: string) {
+    const studentName = students.find((student) => student.id === studentId)?.displayName ?? 'this student'
+    setAnnouncement(selectedStudentId === studentId ? `Closed details for ${studentName}.` : `Showing details for ${studentName}. Loading attempt history…`)
     if (selectedStudentId === studentId) {
       setSelectedStudentId('')
       setSelectedStudentProgress([])
@@ -425,6 +497,7 @@ function WorkspacePage() {
 
     const topicId = selectedTopicId || scores[0].topic.id
     setSavingAttempt(true)
+    setAnnouncement('Saving attempt…')
     try {
       const response = await apiFetch('/student/attempts', {
         method: 'POST',
@@ -452,6 +525,7 @@ function WorkspacePage() {
 
   async function handleGenerateQuestion() {
     setGeneratingQuestion(true)
+    setAnnouncement('Creating a practice question. This can take a few seconds.')
     setPracticeError('')
     setPracticeResult(null)
     setSelectedAnswer('')
@@ -471,6 +545,7 @@ function WorkspacePage() {
     event.preventDefault()
     if (!generatedQuestion || !selectedAnswer) return
     setSubmittingAnswer(true)
+    setAnnouncement('Checking your answer…')
     setPracticeError('')
     try {
       const response = await apiFetch(`/student/practice-questions/${generatedQuestion.id}/answer`, {
@@ -495,6 +570,7 @@ function WorkspacePage() {
 
   async function handleGenerateSummary(studentId: string) {
     setSummaryLoadingId(studentId)
+    setAnnouncement(`Writing a summary for ${students.find((student) => student.id === studentId)?.displayName ?? 'this student'}…`)
     setSummaryErrors((current) => ({ ...current, [studentId]: '' }))
     try {
       const response = await apiFetch(`/tutor/students/${studentId}/summary`, { method: 'POST' })
@@ -533,6 +609,8 @@ function WorkspacePage() {
 
   return (
     <div className="workspace-shell">
+      <SkipLink />
+      <p className="visually-hidden" role="status" aria-live="polite">{announcement}</p>
       <header className="topbar">
         <Link className="brand" to={rolePath(user.role)} aria-label="Acuity Tutors home">
           <span className="brand-mark" aria-hidden="true"><i /><i /><i /><i /></span>
@@ -546,12 +624,12 @@ function WorkspacePage() {
         </div>
       </header>
 
-      <main className="dashboard-main">
+      <main className="dashboard-main" id="main-content" tabIndex={-1}>
         <p className="eyebrow">{isStudent ? 'YOUR LEARNING' : 'TUTOR WORKSPACE'}</p>
         <h1>{isStudent ? 'Your practice starts here.' : 'Your roster starts here.'}</h1>
         <p className="dashboard-intro">{message}</p>
         {dataError && <p className="data-error" role="alert">{dataError}</p>}
-        {dataLoading ? <p className="mastery-loading" aria-live="polite">Loading mastery data…</p> : isStudent ? (
+        {dataLoading ? <p className="mastery-loading">Loading mastery data…</p> : isStudent ? (
           <>
             <section className="student-summary-band" aria-label="Mastery summary">
               {scores.length === 0
@@ -584,9 +662,9 @@ function WorkspacePage() {
                 {generatedQuestion && (
                   <div className="generated-question">
                     <div className="question-meta"><span>{generatedQuestion.topic}</span><span>{difficultyLabel(generatedQuestion.difficulty)}</span></div>
-                    <h3>{generatedQuestion.question}</h3>
+                    <h3 id="practice-question" ref={questionHeadingRef} tabIndex={-1}>{generatedQuestion.question}</h3>
                     <form onSubmit={handlePracticeSubmit}>
-                      <fieldset className="practice-options" disabled={Boolean(practiceResult) || submittingAnswer}>
+                      <fieldset className="practice-options" disabled={Boolean(practiceResult) || submittingAnswer} aria-describedby="practice-question">
                         <legend className="visually-hidden">Choose one answer</legend>
                         {generatedQuestion.options.map((option, index) => (
                           <label className={`practice-option ${selectedAnswer === option ? 'selected' : ''}`} key={`${index}-${option}`}>
@@ -597,8 +675,8 @@ function WorkspacePage() {
                         ))}
                       </fieldset>
                       {practiceResult && (
-                        <div className={`practice-feedback ${practiceResult.isCorrect ? 'feedback-correct' : 'feedback-incorrect'}`} role="status">
-                          <strong>{practiceResult.isCorrect ? 'Correct' : 'Not quite'}</strong>
+                        <div className={`practice-feedback ${practiceResult.isCorrect ? 'feedback-correct' : 'feedback-incorrect'}`} role="status" ref={feedbackRef} tabIndex={-1}>
+                          <strong>{practiceResult.isCorrect ? 'Correct' : 'Not quite'}<span className="visually-hidden">.</span></strong>
                           <p>Answer: {practiceResult.correctAnswer}</p>
                           <p>{practiceResult.explanation}</p>
                           <small>Mastery is now {practiceResult.mastery.accuracy?.toFixed(1)}% · {statusLabel(practiceResult.mastery.status)}</small>
@@ -640,8 +718,9 @@ function WorkspacePage() {
                 <span className="mastery-count">{classTopics.length} topics</span>
               </div>
               {classTopics.length === 0 ? <p className="empty-roster">Class-wide topic patterns will appear when roster attempts are available.</p> : (
-                <div className="mastery-table-wrap">
+                <div className="mastery-table-wrap" role="region" aria-label="Topics needing attention table" tabIndex={0}>
                   <table className="mastery-table class-topic-table">
+                    <caption className="visually-hidden">Class-wide topics ranked by students needing practice</caption>
                     <thead><tr><th scope="col">Topic</th><th scope="col">Avg. accuracy</th><th scope="col">Need practice</th><th scope="col">Developing</th></tr></thead>
                     <tbody>{classTopics.map((topic) => (
                       <tr key={topic.topicId}>
@@ -671,8 +750,8 @@ function WorkspacePage() {
                   <article className={`roster-student ${isSelected ? 'roster-student-selected' : ''}`} key={student.id}>
                     <header className="roster-student-heading">
                       <div className="roster-student-identity">
-                        <button className="student-select" type="button" aria-expanded={isSelected} onClick={() => handleSelectStudent(student.id)}>{student.displayName}</button>
-                        <p>{student.email}</p>
+                        <h3 className="roster-student-name"><button className="student-select" type="button" aria-expanded={isSelected} aria-controls={`detail-panel-${student.id}`} onClick={() => handleSelectStudent(student.id)}>{student.displayName}<span className="visually-hidden">, show full topic breakdown</span></button></h3>
+                        <p id={`student-name-${student.id}`}><span className="visually-hidden">For {student.displayName}, </span>{student.email}</p>
                         <p className="roster-weak-topics"><strong>Focus:</strong> {weakTopics.length ? weakTopics.slice(0, 3).map((score) => score.topic.name).join(', ') : 'No identified weak topics'}</p>
                       </div>
                       <div className="roster-student-metrics">
@@ -683,17 +762,17 @@ function WorkspacePage() {
                       </div>
                     </header>
                     <div className="tutor-summary-area">
-                      <button className="secondary-action" type="button" onClick={() => handleGenerateSummary(student.id)} disabled={summaryLoadingId === student.id} aria-busy={summaryLoadingId === student.id}>
+                      <button className="secondary-action" type="button" onClick={() => handleGenerateSummary(student.id)} disabled={summaryLoadingId === student.id} aria-busy={summaryLoadingId === student.id} aria-describedby={`student-name-${student.id}`}>
                         {summaryLoadingId === student.id ? 'Writing summary…' : tutorSummaries[student.id] ? 'Refresh summary' : 'Generate summary'}
                       </button>
                       {summaryErrors[student.id] && <p className="form-error" role="alert">{summaryErrors[student.id]}</p>}
                       {tutorSummaries[student.id] && <p className="tutor-summary" role="status">{tutorSummaries[student.id]}</p>}
                     </div>
                     {isSelected && (
-                      <section className="student-detail" aria-labelledby={`detail-${student.id}`}>
-                        <h3 id={`detail-${student.id}`}>Full topic breakdown</h3>
-                        <GroupedMastery scores={student.scores} groupedScores={groupedStudentScores} compact />
-                        <ProgressChart progress={selectedStudentProgress} loading={studentProgressLoading} error={studentProgressError} title={`${student.displayName} progress over time`} />
+                      <section className="student-detail" id={`detail-panel-${student.id}`} aria-labelledby={`detail-${student.id}`}>
+                        <h4 id={`detail-${student.id}`}>Full topic breakdown for {student.displayName}</h4>
+                        <GroupedMastery scores={student.scores} groupedScores={groupedStudentScores} compact headingLevel={5} />
+                        <ProgressChart progress={selectedStudentProgress} loading={studentProgressLoading} error={studentProgressError} title={`${student.displayName} progress over time`} headingLevel={4} />
                       </section>
                     )}
                   </article>
@@ -792,12 +871,13 @@ function summarizeClassTopics(students: RosterStudent[]): ClassTopicSummary[] {
   )
 }
 
-function MasteryTable({ scores, compact = false }: { scores: MasteryScore[]; compact?: boolean }) {
+function MasteryTable({ scores, compact = false, caption }: { scores: MasteryScore[]; compact?: boolean; caption: string }) {
   if (scores.length === 0) return <p className="empty-mastery">No mastery scores yet.</p>
 
   return (
-    <div className={`mastery-table-wrap ${compact ? 'compact' : ''}`}>
+    <div className={`mastery-table-wrap ${compact ? 'compact' : ''}`} role="region" aria-label={`${caption} table`} tabIndex={0}>
       <table className="mastery-table">
+        <caption className="visually-hidden">{caption}</caption>
         <thead><tr><th scope="col">Topic</th><th scope="col">Accuracy</th><th scope="col">Attempts</th><th scope="col">Classification</th></tr></thead>
         <tbody>{scores.map((score) => (
           <tr key={score.id}>
@@ -822,21 +902,28 @@ function groupScoresBySubject(scores: MasteryScore[]) {
   return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right))
 }
 
+function Heading({ level, children, ...props }: { level: 2 | 3 | 4 | 5 } & HTMLAttributes<HTMLHeadingElement>) {
+  const Tag = `h${level}` as const
+  return <Tag {...props}>{children}</Tag>
+}
+
 function GroupedMastery({
   scores,
   groupedScores = groupScoresBySubject(scores),
   compact = false,
+  headingLevel = 3,
 }: {
   scores: MasteryScore[]
   groupedScores?: Array<[string, MasteryScore[]]>
   compact?: boolean
+  headingLevel?: 3 | 4 | 5
 }) {
   return (
     <div className={`grouped-mastery ${compact ? 'grouped-mastery-compact' : ''}`}>
       {groupedScores.map(([subject, subjectScores]) => (
         <section className="subject-mastery-group" key={subject} aria-label={`${subject} topics`}>
-          <h3>{subject}</h3>
-          <MasteryTable scores={subjectScores} compact={compact} />
+          <Heading level={headingLevel} className="subject-mastery-heading">{subject}</Heading>
+          <MasteryTable scores={subjectScores} compact={compact} caption={`${subject} topic mastery`} />
         </section>
       ))}
     </div>
@@ -848,11 +935,13 @@ function ProgressChart({
   loading,
   error,
   title,
+  headingLevel = 2,
 }: {
   progress: TopicProgress[]
   loading: boolean
   error: string
   title: string
+  headingLevel?: 2 | 4
 }) {
   const [requestedTopicId, setRequestedTopicId] = useState('')
   const selectedTopicId = progress.some((topic) => topic.topicId === requestedTopicId)
@@ -868,7 +957,7 @@ function ProgressChart({
   return (
     <section className="progress-panel" aria-labelledby={`progress-${title.replaceAll(' ', '-')}`}>
       <header className="progress-panel-heading">
-        <div><p className="eyebrow">ATTEMPT HISTORY</p><h2 id={`progress-${title.replaceAll(' ', '-')}`}>{title}</h2></div>
+        <div><p className="eyebrow">ATTEMPT HISTORY</p><Heading level={headingLevel} className="progress-title" id={`progress-${title.replaceAll(' ', '-')}`}>{title}</Heading></div>
         {progress.length > 0 && (
           <label className="progress-topic-select">
             <span>Topic</span>
@@ -884,11 +973,25 @@ function ProgressChart({
             : (
               <>
                 <p className="progress-chart-caption">Running accuracy after each saved attempt.</p>
-                <div className="accuracy-chart">
+                <p className="progress-summary">{describeProgress(selectedTopic)}</p>
+                {/* The chart repeats the table below, so it is hidden from screen readers and skipped by Tab. */}
+                <div className="accuracy-chart" aria-hidden="true">
                   <Suspense fallback={<p className="chart-loading">Loading chart…</p>}>
                     <AccuracyChart points={chartPoints} />
                   </Suspense>
                 </div>
+                <table className="visually-hidden">
+                  <caption>{`Accuracy after each attempt: ${selectedTopic.subjectName}, ${selectedTopic.topicName}`}</caption>
+                  <thead><tr><th scope="col">Attempt</th><th scope="col">Date</th><th scope="col">Result</th><th scope="col">Running accuracy</th></tr></thead>
+                  <tbody>{selectedTopic.points.map((point) => (
+                    <tr key={point.attempts}>
+                      <th scope="row">{point.attempts}</th>
+                      <td>{new Date(point.attemptedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                      <td>{point.isCorrect ? 'Correct' : 'Incorrect'}</td>
+                      <td>{point.accuracy.toFixed(1).replace(/\.0$/, '')}%</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
               </>
             )}
     </section>

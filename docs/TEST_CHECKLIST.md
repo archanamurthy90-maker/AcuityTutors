@@ -9,6 +9,7 @@ Manual test checklist covering every feature in [FEATURE_INVENTORY.md](FEATURE_I
 - **Expired token for B1–B2:** from the `server/` folder run `node -e "require('dotenv').config({path:'.env'});console.log(require('jsonwebtoken').sign({email:'ava@acuity.local',role:'STUDENT'},process.env.JWT_SECRET,{subject:'x',expiresIn:-60,issuer:'acuity-tutors',audience:'acuity-tutors-web'}))"` and use the output as the `acuity_session` cookie value.
 - **Recording a failure:** put what happened in Notes and report it as: "Test [ID] failed: [what you did] → [what happened]."
 - **API run (2026-10-04):** cases marked **Pass (API)** passed the server-side part; their note says what still needs a browser check. The API cases are automated in `server/scripts/api-checklist.ts` (`npm run test:api --workspace=server` with the API running). That run creates and then deletes temporary accounts; afterwards run `npm run db:seed` to restore the baseline. Cases needing a different server config (E1, E2, E3, B13, SEC6, X21) were run on temporary instances on ports 3102–3106, which were stopped afterwards.
+- **Phase 5 (accessibility):** AX1–AX10 updated and AX11–AX16 added; AX9 now passes. AX4 and AX8 still need a manual screen-reader and zoom check, and AX2 needs a live browser run once the Gemini quota resets.
 - **Phase 4 (security):** SEC2–SEC4 now pass and SEC8–SEC15 were added; see `docs/SECURITY_AUDIT.md`. X22 and W3 changed because tutor self-registration was removed and the password limit is now 72.
 - **Likely failures:** cases marked "⚠ Expected to fail" describe the behaviour the app *should* have but probably does not yet. They were found while writing this checklist and have not been fixed (no code was changed in this phase).
 
@@ -220,16 +221,22 @@ Use DevTools device mode (F12 → phone/tablet icon).
 
 | ID | Feature | Expected result | Test type | Pass/Fail | Notes |
 |---|---|---|---|---|---|
-| AX1 | UI-5/AUTH-1 Keyboard only: sign in | Tab order is Email → Password → Sign in → Create an account; focus is always visible; Enter submits | Accessibility | | New |
-| AX2 | UI-5/AI-2 Keyboard only: Generate question, choose an answer, Check answer | All controls are reachable; arrow keys move between options; Enter/Space activates | Accessibility | | New |
-| AX3 | UI-5/STU-6 Keyboard only: Log an attempt | The Topic select, Correct/Incorrect, and Save attempt all work; a screen reader announces Correct/Incorrect as pressed or not pressed | Accessibility | | New |
-| AX4 | UI-5/AUTH-8 Screen reader (Windows Narrator): wrong password, then a session-expired sign-in | Both messages are announced automatically (`role="alert"` / `role="status"`) | Accessibility | | New |
-| AX5 | UI-5/TUT-4 Screen reader on the roster student-name button | Announced as a button with expanded/collapsed state | Accessibility | | New |
-| AX6 | UI-5 Lighthouse → Accessibility on `/login`, `/student`, `/tutor` | Score of 90 or more; no colour-contrast or missing-label failures (record scores in Notes) | Accessibility | | New |
-| AX7 | UI-1 Error fallback (during B10) with keyboard and screen reader | The "Something went wrong." heading is announced; Reload page is reachable with Tab | Accessibility | | New |
-| AX8 | UI-4/UI-5 Browser zoom 200% on each page | No content is cut off; no horizontal page scroll | Accessibility | | New |
-| AX9 | STU-4/TUT-4 The accuracy chart with a screen reader | The chart data is available as text (summary, table, or label) | Accessibility | | New. ⚠ Expected to fail: the chart has no text alternative. |
-| AX10 | STU-3/TUT-3 Mastery statuses in greyscale (DevTools → Rendering → Emulate vision deficiency) | Status is readable from the text labels, not colour alone | Accessibility | | New |
+| AX1 | UI-5/AUTH-1 Keyboard only: sign in | First Tab shows "Skip to main content"; then Tab order is Acuity Tutors home → Email → Password → Sign in → Create an account; every stop has a solid dark-green outline; Enter in a field submits | Accessibility | Pass | 2026-10-04 Phase 5: headless Edge on the production build: exactly that order, all 6 stops with a 3 px outline; Enter on the skip link focused `main-content`; Enter in an empty email field focused Email and announced the error summary (A11Y-01, A11Y-02, A11Y-04). Record it on video for the submission. |
+| AX2 | UI-5/AI-2 Keyboard only: Generate question, choose an answer, Check answer | Enter/Space on Generate question; focus jumps to the question; Tab into the options, arrow keys choose, Space selects; Tab to Check answer, Enter; focus jumps to the feedback | Accessibility | Pass (automated) | 2026-10-04 Phase 5: `client/tests/a11y.test.tsx` checks focus moves to the question heading and then to the feedback (A11Y-07); the options are native radios. A live browser run was blocked by the Gemini daily quota, so do this one by hand once the quota resets. |
+| AX3 | UI-5/STU-6 Keyboard only: Log an attempt | Topic select, Correct/Incorrect, and Save attempt are reachable in order; Space/Enter toggles Correct/Incorrect (`aria-pressed`) and saves; the success message is announced | Accessibility | Pass | 2026-10-04 Phase 5: headless Edge on the production build: Space on Incorrect set `aria-pressed="true"`, the next Tab reached Save attempt. |
+| AX4 | UI-5/AUTH-8 Screen reader (Windows Narrator): wrong password, empty form, and a session-expired sign-in | The error summary and server error are announced automatically (`role="alert"`); each field reads its own error (`aria-describedby`); the session notice is announced (`role="status"`) | Accessibility | | 2026-10-04 Phase 5: markup verified by tests and in Edge (A11Y-04, A11Y-05); listening with Narrator is still a manual check. |
+| AX5 | UI-5/TUT-4 Screen reader on the roster student-name button | Announced as a level-3 heading containing a button "Ava Chen, show full topic breakdown" with collapsed/expanded state; Enter opens a labelled "Full topic breakdown for Ava Chen" region | Accessibility | Pass | 2026-10-04 Phase 5: headless Edge on the production build: Enter set `aria-expanded="true"` and showed the h4 detail; `aria-controls` points to it (A11Y-08, A11Y-10). |
+| AX6 | UI-5 Lighthouse → Accessibility on `/login`, `/register`, `/student`, `/tutor` | Score of 90 or more; no colour-contrast or missing-label failures (record scores in Notes) | Accessibility | Pass (axe) | 2026-10-04 Phase 5: axe-core (the engine Lighthouse uses) in headless Edge on the production build: 0 violations on login, login with errors, register, student dashboard, and tutor dashboard with a student expanded, including real colour contrast on 20–169 elements per page. Run Lighthouse itself by hand and record the scores here. |
+| AX7 | UI-1 Error fallback (during B10) with keyboard and screen reader | Focus moves to the "Something went wrong." heading; the page keeps its main landmark; Reload page is reachable with Tab | Accessibility | Pass (automated) | 2026-10-04 Phase 5: `a11y.test.tsx`: the fallback heading receives focus, and axe finds 0 violations (A11Y-07, A11Y-08). |
+| AX8 | UI-4/UI-5 Browser zoom 200% on each page | No content is cut off; no horizontal page scroll (wide tables scroll inside their own focusable region) | Accessibility | | 2026-10-04 Phase 5: not yet run; manual. |
+| AX9 | STU-4/TUT-4 The accuracy chart with a screen reader | A sentence summarises the selected topic (latest accuracy, attempts, change since the first attempt); a screen-reader table lists every attempt (number, date, result, running accuracy); the SVG is hidden from assistive tech and is not a Tab stop | Accessibility | Fail → Pass (A11Y-06) | Phase 2: no text alternative. 2026-10-04 Phase 5: `a11y.test.tsx` checks the summary text, a 4-row table, and `aria-hidden` on the chart; headless Edge on the production build: the chart is not a Tab stop and the tutor detail shows the summary sentence. |
+| AX10 | STU-3/TUT-3 Mastery statuses in greyscale (DevTools → Rendering → Emulate vision deficiency) | Status is readable from the text labels, not colour alone | Accessibility | Pass | 2026-10-04 Phase 5: every status badge is a text label (Mastered / Developing / Needs Practice / Not enough data); the counts and feedback ("Correct" / "Not quite") are text; `a11y.test.tsx` checks this. |
+| AX11 | UI-5 Skip link on every page: press Tab once after the page loads, then Enter | "Skip to main content" appears at the top-left, and Enter moves focus to the main content (the next Tab lands on the first control inside it) | Accessibility | Pass | New. 2026-10-04 Phase 5: headless Edge on the production build and `a11y.test.tsx` (A11Y-01). |
+| AX12 | UI-5 Focus visibility: Tab through `/login`, `/student`, and `/tutor` | Every stop (links, buttons, inputs, selects, table regions, roster buttons) shows a solid 3 px dark-green outline with at least 3:1 contrast | Accessibility | Pass | New. 2026-10-04 Phase 5: headless Edge on the production build: 0 of 36 recorded stops lacked a visible outline; `contrast.test.ts` checks the focus colour (A11Y-02). |
+| AX13 | UI-5/AUTH-1/AUTH-2 Form errors: submit an empty sign-in form and an invalid registration | Each invalid field has `aria-invalid="true"` and `aria-describedby` pointing to its message; an alert summarises the fields; focus moves to the first invalid field; server field errors attach to the matching field | Accessibility | Pass | New. 2026-10-04 Phase 5: `a11y.test.tsx` (2 tests) and Edge (A11Y-04). |
+| AX14 | UI-5 Colour contrast | All text ≥4.5:1 (muted text ≥4.8:1 on every background); form control borders and the focus outline ≥3:1 | Accessibility | Pass | New. 2026-10-04 Phase 5: `contrast.test.ts` checks the design tokens; axe colour-contrast passes in headless Edge on the production build (A11Y-03). |
+| AX15 | UI-5 Page titles: open each page and read the browser tab | "Sign in · Acuity Tutors", "Create account · Acuity Tutors", "Student dashboard · Acuity Tutors", "Tutor dashboard · Acuity Tutors" | Accessibility | Pass | New. 2026-10-04 Phase 5: `a11y.test.tsx` (A11Y-11). |
+| AX16 | UI-5 Loading announcements with a screen reader: open the dashboard, Generate question, Save attempt, expand a student, Generate summary | A polite status region announces "Loading mastery data…", "Mastery data loaded.", "Creating a practice question…", "Saving attempt…", "Showing details for …", and "Writing a summary for …" | Accessibility | Pass (automated) | New. 2026-10-04 Phase 5: `a11y.test.tsx` checks the persistent status region; listening with Narrator is still manual (A11Y-05). |
 
 ## 13. Additional security
 
@@ -255,7 +262,7 @@ Use DevTools device mode (F12 → phone/tablet icon).
 
 | Feature ID | Tests |
 |---|---|
-| AUTH-1 | L1–L7, W2, W10, W13, W14, W19, W27, AX1, SEC2, SEC14, V2 |
+| AUTH-1 | AX13, L1–L7, W2, W10, W13, W14, W19, W27, AX1, SEC2, SEC14, V2 |
 | AUTH-2 | R1, R2, R4, X22, W1, W6, W7, W9, W12, W15, W17, W28, SEC3, SEC7 |
 | AUTH-3 | R3, A6, W3, W8, W11, SEC10 |
 | AUTH-4 | L1, L2, E5, W25 |
@@ -298,6 +305,6 @@ Use DevTools device mode (F12 → phone/tablet icon).
 | UI-2 | X18, B12, B14, B15, SEC12 |
 | UI-3 | E4 |
 | UI-4 | V1–V5, B11, AX8 |
-| UI-5 | AX1–AX8 |
+| UI-5 | AX1–AX8, AX11–AX16 |
 
-**Totals:** 72 reused plan cases + 23 X + 15 B + 35 W + 10 AX + 15 SEC = **170 cases**.
+**Totals:** 72 reused plan cases + 23 X + 15 B + 35 W + 16 AX + 15 SEC = **176 cases**.
