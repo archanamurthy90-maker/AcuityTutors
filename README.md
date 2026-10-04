@@ -76,7 +76,8 @@ Stop the container with `docker compose down`. Persistent container data is stor
 - `npm run db:studio` opens Prisma Studio.
 - `npm test` runs the server and client test suites.
 - `npm test --workspace=server` runs auth, error-handling, mastery, progress-series, and Gemini response/error tests.
-- `npm test --workspace=client` runs Vitest (jsdom) tests for session expiry handling and the error boundary.
+- `npm test --workspace=client` runs Vitest (jsdom) tests for session expiry handling, the error boundary, and sign-in page copy.
+- `npm run test:api --workspace=server` runs the API-level cases from `docs/TEST_CHECKLIST.md` against a running API (`API_URL` defaults to `http://localhost:3001`; `SKIP_GEMINI=1` skips Gemini calls). It creates and deletes temporary accounts and records practice answers for Ava, so run `npm run db:seed` afterwards to restore the baseline.
 - `npm run lint` runs oxlint on the client.
 
 ## Seeded local demo accounts
@@ -95,7 +96,7 @@ The API provides `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/a
 
 Set `GEMINI_API_KEY` in the ignored `server/.env`. Keep it there: never use a `VITE_` variable or send the key to the browser. The server uses Google's official `@google/genai` SDK and the stable `gemini-3.8-flash` model (current stable general model as of 2026-10-01) through the Interactions API. Requests use structured JSON output, a 30-second timeout, and `store: false`; responses are validated again on the server.
 
-`POST /api/student/practice-questions` selects the signed-in student's weakest topic, asks Gemini for one original four-choice question at a matching difficulty, validates and saves it, and returns the question/options without the answer key. `POST /api/student/practice-questions/:questionId/answer` accepts one of those options, grades it on the server, records a `PRACTICE` QuizAttempt, and recalculates mastery in the same transaction. Question ownership is checked against the signed-in student. Needs Practice produces easy questions, Developing medium, Mastered hard; Not Enough Data uses easy until there is enough evidence.
+`POST /api/student/practice-questions` selects the signed-in student's weakest topic, asks Gemini for one original four-choice question at a matching difficulty, validates and saves it, and returns the question/options without the answer key. `POST /api/student/practice-questions/:questionId/answer` accepts one of those options, grades it on the server, records a `PRACTICE` QuizAttempt, and recalculates mastery in the same transaction. Question ownership is checked against the signed-in student. Each question can be answered once: a unique database constraint on `QuizAttempt.practiceQuestionId` blocks duplicates, and a second or simultaneous answer returns 409 “This question has already been answered.” Needs Practice produces easy questions, Developing medium, Mastered hard; Not Enough Data uses easy until there is enough evidence.
 
 `POST /api/tutor/students/:studentId/summary` creates a brief next-step summary only when the requested student belongs to the signed-in tutor's roster. The summary prompt prioritizes Needs Practice and Developing topics, and treats Not Enough Data as a reason to gather more evidence rather than a confirmed weakness.
 

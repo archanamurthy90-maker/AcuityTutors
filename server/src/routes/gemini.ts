@@ -1,4 +1,4 @@
-import { AttemptSource, Difficulty, PrismaClient, UserRole } from '@prisma/client'
+import { AttemptSource, Difficulty, Prisma, PrismaClient, UserRole } from '@prisma/client'
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth, requireRole } from '../auth.js'
@@ -7,6 +7,7 @@ import { recalculateTopicMastery } from '../services/mastery.js'
 
 const answerSchema = z.object({ answer: z.string().trim().min(1, 'Choose an answer.').max(300) })
 const studentIdSchema = z.string().cuid()
+export const alreadyAnsweredMessage = 'This question has already been answered.'
 
 const weaknessRank = {
   NEEDS_PRACTICE: 0,
@@ -112,10 +113,14 @@ export function createGeminiRouter(prisma: PrismaClient) {
       }
       const question = await prisma.practiceQuestion.findFirst({
         where: { id: questionId.data, studentId: student.id },
-        select: { id: true, topicId: true, prompt: true, choices: true, correctAnswer: true, explanation: true, difficulty: true },
+        select: { id: true, topicId: true, prompt: true, choices: true, correctAnswer: true, explanation: true, difficulty: true, attempt: { select: { id: true } } },
       })
       if (!question) {
         response.status(404).json({ error: 'Practice question not found.' })
+        return
+      }
+      if (question.attempt) {
+        response.status(409).json({ error: alreadyAnsweredMessage })
         return
       }
 
@@ -150,6 +155,11 @@ export function createGeminiRouter(prisma: PrismaClient) {
         mastery: result.mastery,
       })
     } catch (error) {
+      // The unique practiceQuestionId constraint rejects a concurrent second answer.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        response.status(409).json({ error: alreadyAnsweredMessage })
+        return
+      }
       next(error)
     }
   })

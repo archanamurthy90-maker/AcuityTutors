@@ -49,4 +49,11 @@ describe('expired sessions return to sign-in with a clear message', () => {
     await screen.findByRole('heading', { name: 'Welcome back' })
     expect(screen.queryByText(sessionExpiredMessage)).toBeNull()
   })
+
+  it('BUG-06: the sign-in page describes password storage as hashing, not encryption', async () => {
+    stubApi({ '/auth/me': [401, { error: 'Please sign in to continue.', code: 'AUTH_REQUIRED' }] })
+    render(<App />)
+    expect(await screen.findByText('Your password is securely hashed before it is stored.')).toBeTruthy()
+    expect(document.body.textContent).not.toMatch(/encrypt/i)
+  })
 })

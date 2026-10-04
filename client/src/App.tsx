@@ -294,7 +294,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
             {isRegister ? 'Already have an account?' : 'New to Acuity Tutors?'}{' '}
             <Link to={isRegister ? '/login' : '/register'}>{isRegister ? 'Sign in' : 'Create an account'}</Link>
           </p>
-          <p className="auth-security">Your password is encrypted before it is stored.</p>
+          <p className="auth-security">Your password is securely hashed before it is stored.</p>
         </section>
       </main>
       <footer className="auth-footer"><span>ACUITY TUTORS</span><span>Focused practice starts with a clear picture.</span></footer>

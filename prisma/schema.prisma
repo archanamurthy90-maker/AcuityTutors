@@ -104,7 +104,7 @@ model QuizAttempt {
   id                String           @id @default(cuid())
   studentId         String
   topicId           String
-  practiceQuestionId String?
+  practiceQuestionId String?         @unique // a practice question can be answered only once
   isCorrect         Boolean
   response          String?
   responseTimeMs    Int?
@@ -118,7 +118,6 @@ model QuizAttempt {
 
   @@index([studentId, topicId, attemptedAt])
   @@index([topicId, attemptedAt])
-  @@index([practiceQuestionId])
 }
 
 model MasteryScore {
@@ -152,7 +151,7 @@ model PracticeQuestion {
   model       String?
   student     Student       @relation(fields: [studentId], references: [id], onDelete: Restrict)
   topic       Topic          @relation(fields: [topicId], references: [id], onDelete: Restrict)
-  attempts    QuizAttempt[]
+  attempt     QuizAttempt?
   createdAt   DateTime       @default(now()) @db.Timestamptz(6)
 
   @@index([studentId, topicId, createdAt])
