@@ -228,3 +228,11 @@ The initial project structure was approved on 2026-09-30. Application feature im
 - Actions: Computed figures from the documents and repository rather than from memory: 49 features and 8 workflows; 192 checklist cases (97 with a recorded pass including 6 Fail → Pass, 0 open failures, 95 manual cases not yet run); 88 automated tests (49 server, 39 client; 8 server and 0 client before the assignment); 36 improvement-log entries; 32 audit findings (12 fixed, 16 pass, 3 accepted, 1 open); 12 commits. Lighthouse scores are not recorded, so the notes include an empty table to fill in. The LeaseLens practices and the Copilot-to-Claude Code switch are as stated by the author. No code changed.
 - Errors: None.
 - Time spent: Not tracked.
+
+## Assignment 5.4 Demo Video Script
+
+- Timestamp: 2026-10-04T17:06:13-04:00
+- Prompt: Write docs/VIDEO_SCRIPT.md: a 4-minute demo script with timestamps and narration, using about 3 Gemini questions and 1 summary at most, covering registration, login, the dashboard and mastery explanation, AI question and report, log an attempt, session expiry, the tutor view, the role redirect, error handling, keyboard-only use, and phone view, plus setup steps.
+- Actions: Wrote a 13-segment script (0:00–4:00) with on-screen actions and lines to say, a setup checklist (quota, reseed, restarting the dev server to clear rate-limit counters, a fresh demo email, DevTools, admin PowerShell for PostgreSQL), after-recording cleanup, and recovery tips. It uses 2 Gemini questions and 1 summary, with 1 question spare. Checked the UI messages and flows against the current code. No code changed.
+- Errors: None.
+- Time spent: Not tracked.
