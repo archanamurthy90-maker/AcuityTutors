@@ -1,6 +1,7 @@
-import { createContext, lazy, Suspense, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import './App.css'
+import { apiBaseUrl, apiFetch, sessionNoticeFromMe, setUnauthorizedHandler } from './lib/api.js'
 
 const AccuracyChart = lazy(() => import('./components/AccuracyChart.js').then((module) => ({ default: module.AccuracyChart })))
 
@@ -48,35 +49,50 @@ type PracticeResult = {
   mastery: { accuracy: number | null; status: MasteryStatus; totalAttempts: number }
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
 const registrationPasswordRule = 'Use at least 8 characters, including a letter and a number.'
 const AuthContext = createContext<{
   user: AuthUser | null
   setUser: (user: AuthUser | null) => void
   loading: boolean
+  sessionNotice: string
 } | null>(null)
 
 function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null)
+  const [user, setUserState] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [sessionNotice, setSessionNotice] = useState('')
+
+  const setUser = useCallback((nextUser: AuthUser | null) => {
+    if (nextUser) setSessionNotice('')
+    setUserState(nextUser)
+  }, [])
+
+  useEffect(() => {
+    setUnauthorizedHandler((message) => {
+      setSessionNotice(message)
+      setUserState(null)
+    })
+    return () => setUnauthorizedHandler(null)
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
 
     fetch(`${apiBaseUrl}/auth/me`, { credentials: 'include', signal: controller.signal })
       .then(async (response) => {
-        if (!response.ok) return null
-        const data = (await response.json()) as { user: AuthUser }
-        return data.user
+        const data = (await response.json().catch(() => null)) as { user?: AuthUser } | null
+        if (response.ok && data?.user) return data.user
+        setSessionNotice(sessionNoticeFromMe(response.status, data))
+        return null
       })
-      .then((currentUser) => setUser(currentUser))
-      .catch(() => setUser(null))
+      .then((currentUser) => setUserState(currentUser))
+      .catch(() => setUserState(null))
       .finally(() => setLoading(false))
 
     return () => controller.abort()
   }, [])
 
-  return <AuthContext.Provider value={{ user, setUser, loading }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, setUser, loading, sessionNotice }}>{children}</AuthContext.Provider>
 }
 
 function useAuth() {
@@ -114,7 +130,7 @@ function RoleRoute({ role }: { role: UserRole }) {
 }
 
 function AuthPage({ mode }: { mode: AuthMode }) {
-  const { setUser } = useAuth()
+  const { setUser, sessionNotice } = useAuth()
   const navigate = useNavigate()
   const isRegister = mode === 'register'
   const [displayName, setDisplayName] = useState('')
@@ -203,6 +219,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
             </div>
             <span className="auth-mark" aria-hidden="true">A.</span>
           </div>
+          {sessionNotice && <p className="session-notice" role="status">{sessionNotice}</p>}
 
           <form onSubmit={handleSubmit} noValidate>
             {isRegister && (
@@ -327,8 +344,8 @@ function WorkspacePage() {
       setDataError('')
       try {
         const [dashboardResponse, masteryResponse] = await Promise.all([
-          fetch(`${apiBaseUrl}/${role}/dashboard`, { credentials: 'include' }),
-          fetch(`${apiBaseUrl}/${role}/mastery`, { credentials: 'include' }),
+          apiFetch(`/${role}/dashboard`),
+          apiFetch(`/${role}/mastery`),
         ])
         const dashboardData = (await dashboardResponse.json()) as { message?: string; error?: string }
         const masteryData = (await masteryResponse.json()) as {
@@ -338,7 +355,6 @@ function WorkspacePage() {
         }
 
         if (!dashboardResponse.ok || !masteryResponse.ok) {
-          if (dashboardResponse.status === 401 || masteryResponse.status === 401) setUser(null)
           throw new Error(masteryData.error ?? dashboardData.error ?? 'Unable to load your workspace.')
         }
 
@@ -356,13 +372,13 @@ function WorkspacePage() {
     void loadWorkspace()
 
     return () => { active = false }
-  }, [user, setUser])
+  }, [user])
 
   useEffect(() => {
     if (!user || user.role !== 'STUDENT') return
     let active = true
 
-    fetch(`${apiBaseUrl}/student/progress`, { credentials: 'include' })
+    apiFetch('/student/progress')
       .then(async (response) => {
         const data = (await response.json()) as { progress?: TopicProgress[]; error?: string }
         if (!response.ok) throw new Error(data.error ?? 'Unable to load progress history.')
@@ -381,7 +397,7 @@ function WorkspacePage() {
     if (!user || user.role !== 'TUTOR' || !selectedStudentId) return
 
     let active = true
-    fetch(`${apiBaseUrl}/tutor/students/${selectedStudentId}/progress`, { credentials: 'include' })
+    apiFetch(`/tutor/students/${selectedStudentId}/progress`)
       .then(async (response) => {
         const data = (await response.json()) as { progress?: TopicProgress[]; error?: string }
         if (!response.ok) throw new Error(data.error ?? 'Unable to load this student’s progress.')
@@ -422,9 +438,8 @@ function WorkspacePage() {
     const topicId = selectedTopicId || scores[0].topic.id
     setSavingAttempt(true)
     try {
-      const response = await fetch(`${apiBaseUrl}/student/attempts`, {
+      const response = await apiFetch('/student/attempts', {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topicId, isCorrect: attemptIsCorrect }),
       })
@@ -453,10 +468,7 @@ function WorkspacePage() {
     setPracticeResult(null)
     setSelectedAnswer('')
     try {
-      const response = await fetch(`${apiBaseUrl}/student/practice-questions`, {
-        method: 'POST',
-        credentials: 'include',
-      })
+      const response = await apiFetch('/student/practice-questions', { method: 'POST' })
       const data = (await response.json()) as { practiceQuestion?: GeneratedPracticeQuestion; error?: string }
       if (!response.ok || !data.practiceQuestion) throw new Error(data.error ?? 'Unable to make a practice question.')
       setGeneratedQuestion(data.practiceQuestion)
@@ -473,9 +485,8 @@ function WorkspacePage() {
     setSubmittingAnswer(true)
     setPracticeError('')
     try {
-      const response = await fetch(`${apiBaseUrl}/student/practice-questions/${generatedQuestion.id}/answer`, {
+      const response = await apiFetch(`/student/practice-questions/${generatedQuestion.id}/answer`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answer: selectedAnswer }),
       })
@@ -498,10 +509,7 @@ function WorkspacePage() {
     setSummaryLoadingId(studentId)
     setSummaryErrors((current) => ({ ...current, [studentId]: '' }))
     try {
-      const response = await fetch(`${apiBaseUrl}/tutor/students/${studentId}/summary`, {
-        method: 'POST',
-        credentials: 'include',
-      })
+      const response = await apiFetch(`/tutor/students/${studentId}/summary`, { method: 'POST' })
       const data = (await response.json()) as { summary?: string; error?: string }
       if (!response.ok || !data.summary) throw new Error(data.error ?? 'Unable to create a student summary.')
       setTutorSummaries((current) => ({ ...current, [studentId]: data.summary! }))

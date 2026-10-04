@@ -9,6 +9,7 @@ export const sessionCookieName = 'acuity_session'
 const sessionLifetimeSeconds = 60 * 60 * 8
 const sessionIssuer = 'acuity-tutors'
 const sessionAudience = 'acuity-tutors-web'
+export const sessionExpiredMessage = 'Your session has expired, please sign in again.'
 
 export const registrationPasswordSchema = z.string()
   .min(1, 'Enter a password.')
@@ -195,7 +196,7 @@ export function createAuthRouter(prisma: PrismaClient) {
 
       if (!user) {
         response.clearCookie(sessionCookieName, { path: '/' })
-        response.status(401).json({ error: 'Your session is no longer valid. Please sign in again.' })
+        response.status(401).json({ error: 'Your session is no longer valid. Please sign in again.', code: 'SESSION_INVALID' })
         return
       }
 
@@ -213,7 +214,7 @@ export const requireAuth: RequestHandler = (request, response, next) => {
   const token = request.cookies?.[sessionCookieName]
 
   if (!secret || typeof token !== 'string') {
-    response.status(401).json({ error: 'Please sign in to continue.' })
+    response.status(401).json({ error: 'Please sign in to continue.', code: 'AUTH_REQUIRED' })
     return
   }
 
@@ -230,15 +231,20 @@ export const requireAuth: RequestHandler = (request, response, next) => {
       typeof decoded.email !== 'string' ||
       (decoded.role !== UserRole.STUDENT && decoded.role !== UserRole.TUTOR)
     ) {
-      response.status(401).json({ error: 'Your session is invalid. Please sign in again.' })
+      response.clearCookie(sessionCookieName, { path: '/' })
+      response.status(401).json({ error: 'Your session is invalid. Please sign in again.', code: 'SESSION_INVALID' })
       return
     }
 
     response.locals.auth = decoded as SessionClaims
     next()
-  } catch {
+  } catch (error) {
     response.clearCookie(sessionCookieName, { path: '/' })
-    response.status(401).json({ error: 'Your session has expired. Please sign in again.' })
+    if (error instanceof jwt.TokenExpiredError) {
+      response.status(401).json({ error: sessionExpiredMessage, code: 'SESSION_EXPIRED' })
+      return
+    }
+    response.status(401).json({ error: 'Your session is invalid. Please sign in again.', code: 'SESSION_INVALID' })
   }
 }
 

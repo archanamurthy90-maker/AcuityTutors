@@ -74,7 +74,10 @@ Stop the container with `docker compose down`. Persistent container data is stor
 - `npm run db:deploy` applies committed migrations in a deployment environment.
 - `npm run db:seed` creates or refreshes the local demo tutor, students, topics, quiz history, and mastery snapshots.
 - `npm run db:studio` opens Prisma Studio.
-- `npm test --workspace=server` runs mastery, progress-series, and Gemini response/error tests.
+- `npm test` runs the server and client test suites.
+- `npm test --workspace=server` runs auth, error-handling, mastery, progress-series, and Gemini response/error tests.
+- `npm test --workspace=client` runs Vitest (jsdom) tests for session expiry handling and the error boundary.
+- `npm run lint` runs oxlint on the client.
 
 ## Seeded local demo accounts
 
@@ -84,7 +87,9 @@ The seed creates bcrypt-hashed local demo accounts. Tutor: `tutor@acuity.local` 
 
 Open `http://localhost:5173/login` and use a seeded account above. Students land on `/student`; tutors land on `/tutor`. Enter a seeded email with a wrong password to verify the form displays “Email or password is incorrect.” Use the “Create an account” link to test registration, choose a role, and submit a name, email, and password with at least 8 characters, one letter, and one number. The register form shows this rule under the password field and blocks weak values; the server enforces the same rule and returns HTTP 400 if bypassed. Login behavior is unchanged. Successful registration creates a bcrypt-hashed account and signs it in. Student and tutor pages show mastery data; students can record a correct/incorrect quiz result to see their score recalculate.
 
-The API provides `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me`. `GET /api/student/dashboard` and `GET /api/tutor/dashboard` require an authenticated session and enforce the matching role. Sessions use an eight-hour HttpOnly, SameSite=Strict JWT cookie. Passwords are hashed with bcrypt; login errors do not disclose whether an email exists.
+The API provides `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me`. `GET /api/student/dashboard` and `GET /api/tutor/dashboard` require an authenticated session and enforce the matching role. Sessions use an eight-hour HttpOnly, SameSite=Strict JWT cookie. Passwords are hashed with bcrypt; login errors do not disclose whether an email exists. An expired session token returns 401 with code `SESSION_EXPIRED` and the message “Your session has expired, please sign in again.”; any 401 from a protected request signs the browser out and shows that message on the sign-in page.
+
+**Error handling:** Malformed JSON request bodies return 400 with a clear message. Database connection failures return 503 with a friendly message; details are logged on the server only. Other unexpected errors return a generic 500. If the React UI crashes while rendering, an error boundary shows a friendly fallback page with a reload button instead of a blank screen.
 
 ## Gemini practice and tutor summaries
 

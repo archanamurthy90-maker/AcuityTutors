@@ -7,7 +7,7 @@ import { PrismaClient, UserRole } from '@prisma/client'
 import { createAuthRouter, cookieMiddleware, requireAuth, requireRole } from './auth.js'
 import { createGeminiRouter } from './routes/gemini.js'
 import { createMasteryRouter } from './routes/mastery.js'
-import { GeminiServiceError } from './services/gemini.js'
+import { apiErrorHandler } from './middleware/errors.js'
 
 const serverDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 dotenv.config({ path: resolve(serverDirectory, '.env') })
@@ -56,13 +56,7 @@ app.use('/api', (_request, response) => {
   response.status(404).json({ error: 'API route not found' })
 })
 
-app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
-  if (error instanceof GeminiServiceError) {
-    response.status(error.statusCode).json({ error: error.publicMessage })
-    return
-  }
-  response.status(500).json({ error: 'Something went wrong. Please try again.' })
-})
+app.use(apiErrorHandler)
 
 if (process.env.NODE_ENV === 'production' && existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath))
