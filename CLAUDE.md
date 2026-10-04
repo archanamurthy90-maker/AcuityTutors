@@ -59,3 +59,6 @@ This structure was approved on 2026-09-30 and is the initial project baseline. K
 
 ## Development Log
 Record work in `docs/DEV_LOG.md` with a timestamp, prompt/task, actions or changes, errors, and time spent. Distinguish measured time from estimates; do not invent elapsed time.
+
+## Assignment 5.4 Improvement Log
+For Assignment 5.4, log every bug, security fix, accessibility fix, and responsible AI change in docs/IMPROVEMENT_LOG.md and commit after each phase.
