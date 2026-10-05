@@ -109,7 +109,7 @@ Manual test checklist covering every feature in [FEATURE_INVENTORY.md](FEATURE_I
 |---|---|---|---|---|---|
 | D1 | STU-1/STU-3 Log in as Ava | Topics grouped by subject with colour-coded levels | UI | | Plan D1 (Pass) |
 | D2 | STU-2 Check the top of the student dashboard | Counts such as "3 topics mastered, 2 need practice · 3 developing" | UI | | Plan D2 (Pass) |
-| D3 | STU-4 View the progress section, then answer a question | The chart displays and updates | UI | | Plan D3 (Pass) |
+| D3 | STU-4 View the progress section, then answer a question or log an attempt for the selected topic | The chart and its summary sentence update immediately, without reloading the page | UI | | Plan D3 (Pass). 2026-10-04: before BUG-08 the chart only updated after a reload; fixed, and `client/tests/progress-refresh.test.tsx` checks the update after a logged attempt and a practice answer. Browser check still to do. |
 | D4 | STU-8 Log in as a new student | Friendly guidance, not a blank page | UI | | Plan D4 (Pass) |
 | U1 | TUT-3 Log in as tutor | All 6 students listed with weak topics | UI | | Plan U1 (Pass) |
 | U2 | TUT-2 Check "Topics needing attention" | Class-wide weakest topics display correctly | UI | | Plan U2 (Pass) |

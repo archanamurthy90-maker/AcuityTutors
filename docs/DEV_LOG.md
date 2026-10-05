@@ -244,3 +244,11 @@ The initial project structure was approved on 2026-09-30. Application feature im
 - Actions: Extracted the 95 cases with a blank Pass/Fail and ordered them into 11 sections (setup, signed-out sign-in, registration, Ava, Ava AI practice, Noah/Mia, tutor, error tests, phone/tablet, zoom and screen reader, documentation). Planned 9 Gemini calls (5 questions, 4 summaries; 12 with the video, within the 20-per-day free tier), marked 34 steps covered by VIDEO_SCRIPT.md timestamps, and listed the 14 "Pass (API)" cases that still need an on-screen check. A script confirmed all 95 IDs appear exactly once. No code changed.
 - Errors: The session hit its usage limit after the file was written and before it was checked and committed; resumed and verified it.
 - Time spent: Not tracked.
+
+## Assignment 5.4 BUG-08: Progress Chart Refresh
+
+- Timestamp: 2026-10-04T21:18:06-04:00
+- Prompt: Make the progress chart (and the tutor's open student detail, if affected) refresh after a practice answer or logged attempt without extra Gemini calls; log as BUG-08; add a client regression test; update D3 in TEST_CHECKLIST and MANUAL_RUN_SHEET; run tests, build, lint; commit.
+- Actions: Added a `progressVersion` counter to `WorkspacePage`, bumped after a successful attempt save and practice answer, as a dependency of the student progress effect. The tutor detail needed no change (tutors cannot add attempts; the detail fetches fresh history when opened). Added `client/tests/progress-refresh.test.tsx` and confirmed it fails on the previous `App.tsx`. Updated D3 (TEST_CHECKLIST, left for a browser check), run sheet row 45, FEATURE_INVENTORY STU-4, and IMPROVEMENT_LOG. `npm test` (49 server + 40 client), build, and client lint passed.
+- Errors: The first edit anchor matched both progress effects, so nothing was written; anchored on the student effect's own lines. The new test first failed because the refreshed history rendered just after Testing Library's default 1-second wait on this low-memory machine; gave the three waits a 5-second timeout.
+- Time spent: Not tracked.

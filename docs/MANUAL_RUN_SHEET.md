@@ -95,7 +95,7 @@ If you film on the same day, the video's question can replace Q1 and its summary
 | 42 | W29 | **Double-click** Save attempt | The row's attempt count goes up by exactly 1 | | | ☐ P ☐ F |
 | 43 | M8 | Log attempts on the Not enough data topic until it has 3 | Its label changes from Not enough data to a level | | | ☐ P ☐ F |
 | 44 | X23 | In Prisma Studio, note one QuizAttempt row, log an attempt, then refresh Studio | One new row; the noted row is unchanged | | | ☐ P ☐ F |
-| 45 | D3 | Reload the page (**F5**) and view the chart for that topic | The chart shows the new attempts (it refreshes on reload, not instantly) | | | ☐ P ☐ F |
+| 45 | D3 | Select that topic in the chart, then log another attempt for it (no reload) | The chart and summary sentence update immediately (BUG-08) | | 1:50 | ☐ P ☐ F |
 
 ## 5. Ava: AI practice (uses Gemini: Q1–Q3)
 

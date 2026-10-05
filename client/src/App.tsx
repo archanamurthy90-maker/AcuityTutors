@@ -371,6 +371,8 @@ function WorkspacePage() {
   const [summaryErrors, setSummaryErrors] = useState<Record<string, string>>({})
   const [summaryLoadingId, setSummaryLoadingId] = useState('')
   const [studentProgress, setStudentProgress] = useState<TopicProgress[]>([])
+  // Bumped after every saved attempt so the progress chart re-fetches its history (BUG-08).
+  const [progressVersion, setProgressVersion] = useState(0)
   const [progressLoading, setProgressLoading] = useState(false)
   const [progressError, setProgressError] = useState('')
   const [selectedStudentId, setSelectedStudentId] = useState('')
@@ -450,7 +452,7 @@ function WorkspacePage() {
       .finally(() => { if (active) setProgressLoading(false) })
 
     return () => { active = false }
-  }, [user])
+  }, [user, progressVersion])
 
   useEffect(() => {
     if (!user || user.role !== 'TUTOR' || !selectedStudentId) return
@@ -517,6 +519,7 @@ function WorkspacePage() {
           : score))
       }
       setAttemptMessage(`Saved. ${statusLabel(data.mastery.status)} after ${data.mastery.totalAttempts} attempts.`)
+      setProgressVersion((version) => version + 1)
     } catch (requestError) {
       setAttemptError(requestError instanceof Error ? requestError.message : 'Unable to save this attempt.')
     } finally {
@@ -562,6 +565,7 @@ function WorkspacePage() {
           ? { ...score, score: data.mastery.accuracy as number, status: data.mastery.status, attemptCount: data.mastery.totalAttempts }
           : score))
       }
+      setProgressVersion((version) => version + 1)
     } catch (requestError) {
       setPracticeError(requestError instanceof Error ? requestError.message : 'Unable to grade this answer.')
     } finally {
