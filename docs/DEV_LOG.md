@@ -236,3 +236,11 @@ The initial project structure was approved on 2026-09-30. Application feature im
 - Actions: Wrote a 13-segment script (0:00–4:00) with on-screen actions and lines to say, a setup checklist (quota, reseed, restarting the dev server to clear rate-limit counters, a fresh demo email, DevTools, admin PowerShell for PostgreSQL), after-recording cleanup, and recovery tips. It uses 2 Gemini questions and 1 summary, with 1 question spare. Checked the UI messages and flows against the current code. No code changed.
 - Errors: None.
 - Time spent: Not tracked.
+
+## Assignment 5.4 Manual Run Sheet
+
+- Timestamp: 2026-10-04T21:06:34-04:00
+- Prompt: Create docs/MANUAL_RUN_SHEET.md: the 95 unrun browser cases from TEST_CHECKLIST.md reordered into one walkthrough grouped by page and account, marking Gemini calls and the cases the demo video covers, one line per step with a Pass/Fail box.
+- Actions: Extracted the 95 cases with a blank Pass/Fail and ordered them into 11 sections (setup, signed-out sign-in, registration, Ava, Ava AI practice, Noah/Mia, tutor, error tests, phone/tablet, zoom and screen reader, documentation). Planned 9 Gemini calls (5 questions, 4 summaries; 12 with the video, within the 20-per-day free tier), marked 34 steps covered by VIDEO_SCRIPT.md timestamps, and listed the 14 "Pass (API)" cases that still need an on-screen check. A script confirmed all 95 IDs appear exactly once. No code changed.
+- Errors: The session hit its usage limit after the file was written and before it was checked and committed; resumed and verified it.
+- Time spent: Not tracked.
