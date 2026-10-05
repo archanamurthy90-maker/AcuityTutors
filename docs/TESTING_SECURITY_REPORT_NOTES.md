@@ -1,10 +1,10 @@
 # Testing, Security, and Responsible AI — Report Notes (Assignment 5.4)
 
-Citable facts for the Assignment 5.4 report on Acuity Tutors. Sources: [IMPROVEMENT_LOG.md](IMPROVEMENT_LOG.md), [SECURITY_AUDIT.md](SECURITY_AUDIT.md), [SECURITY_CHECKLIST.md](SECURITY_CHECKLIST.md), [TEST_CHECKLIST.md](TEST_CHECKLIST.md), [FEATURE_INVENTORY.md](FEATURE_INVENTORY.md), [RESPONSIBLE_AI.md](RESPONSIBLE_AI.md), [DEV_LOG.md](DEV_LOG.md), and git history. All numbers are as of commit `6d777c2` (2026-10-04).
+Citable facts for the Assignment 5.4 report on Acuity Tutors. Sources: [IMPROVEMENT_LOG.md](IMPROVEMENT_LOG.md), [SECURITY_AUDIT.md](SECURITY_AUDIT.md), [SECURITY_CHECKLIST.md](SECURITY_CHECKLIST.md), [TEST_CHECKLIST.md](TEST_CHECKLIST.md), [FEATURE_INVENTORY.md](FEATURE_INVENTORY.md), [RESPONSIBLE_AI.md](RESPONSIBLE_AI.md), [DEV_LOG.md](DEV_LOG.md), and git history. All numbers are as of commit `456bc97` (2026-10-04, after BUG-08).
 
 ## Git history for Assignment 5.4
 
-12 commits on 2026-10-04 between 15:13 and 16:56 local time (commit timestamps; active working time was not tracked).
+17 commits on 2026-10-04 between 15:13 and 21:18 local time (commit timestamps; active working time was not tracked): 12 for Phases 0–6, 3 documentation commits (report notes, video script, manual run sheet), and 2 for BUG-08.
 
 | Phase | Commit | Content |
 |---|---|---|
@@ -15,6 +15,8 @@ Citable facts for the Assignment 5.4 report on Acuity Tutors. Sources: [IMPROVEM
 | 4 | `e11ac76` (+ `9f88375`) | Security audit (32 findings) and fixes, BUG-07, SECURITY_AUDIT.md, SECURITY_CHECKLIST.md |
 | 5 | `ee0c56a` (+ `ca02645`) | Accessibility fixes A11Y-01 to A11Y-11 |
 | 6 | `97752ae` (+ `6d777c2`) | Responsible AI changes RAI-01 to RAI-07, RESPONSIBLE_AI.md |
+| Docs | `fe56a00`, `dd6d34a`, `64e309f` | These report notes, VIDEO_SCRIPT.md, MANUAL_RUN_SHEET.md |
+| Fix | `642bcf9` (+ `456bc97`) | BUG-08 progress chart refresh |
 
 The commits in brackets only record the phase's commit hash in IMPROVEMENT_LOG.md.
 
@@ -24,7 +26,7 @@ The commits in brackets only record the phase's commit hash in IMPROVEMENT_LOG.m
 
 ### Scope
 - **Feature inventory:** 49 features in 7 groups. Authentication 10, Student 9, AI 7, Tutor 6, Database 6, Administration 6, and cross-cutting UI/error handling 5. Plus 8 end-to-end user workflows (WF-1 to WF-8).
-- **Improvement log:** 36 logged changes. 7 bugs, 11 security fixes, 11 accessibility fixes, and 7 responsible AI changes.
+- **Improvement log:** 37 logged changes. 8 bugs, 11 security fixes, 11 accessibility fixes, and 7 responsible AI changes.
 
 ### Original plan vs new checklist
 
@@ -35,7 +37,7 @@ The commits in brackets only record the phase's commit hash in IMPROVEMENT_LOG.m
 | Test types | Not classified | 9 types: Security 45, Functional 36, UI 23, AI 23, API 16, Accessibility 16, Authentication 14, Database 13, Responsive 6 |
 | Traceability | None | Every case names a feature ID; a coverage table maps all 49 features to their tests |
 | Recorded results | 71 Pass, 1 Fail (R3, fixed in `ee445ff`). The plan's summary counts T2–T4 as passed, but those rows have no result recorded. | See below |
-| Automation | None (all manual) | 88 automated tests, plus a live API runner covering 45 cases |
+| Automation | None (all manual) | 89 automated tests, plus a live API runner covering 45 cases |
 
 **New cases by group:** 23 inventory gaps (X1–X23), 15 bug regressions (B1–B15), 35 weird-input cases (W1–W35), 16 accessibility (AX1–AX16), 15 security (SEC1–SEC15), and 16 responsible AI (RAI1–RAI16).
 
@@ -69,8 +71,8 @@ The commits in brackets only record the phase's commit hash in IMPROVEMENT_LOG.m
 | Suite | Before 5.4 | After 5.4 | Files (test count) |
 |---|---|---|---|
 | Server (`node:test` via tsx) | 8 | **49** | `security` 18, `reports` 8, `gemini` 7, `auth` 5, `errors` 4, `practice-answer` 3, `mastery` 3, `progress` 1 |
-| Client (Vitest + jsdom + Testing Library + axe-core) | 0 | **39** | `a11y` 15, `responsible-ai` 9, `contrast` 5, `session` 4, `api` 3, `ErrorBoundary` 2, `register` 1 |
-| **Total** | **8** | **88** | |
+| Client (Vitest + jsdom + Testing Library + axe-core) | 0 | **40** | `a11y` 15, `responsible-ai` 9, `contrast` 5, `session` 4, `api` 3, `ErrorBoundary` 2, `register` 1, `progress-refresh` 1 |
+| **Total** | **8** | **89** | |
 
 - **Live API runner:** `server/scripts/api-checklist.ts` (`npm run test:api --workspace=server`) runs 45 API-level checklist cases against the running app. Its last full run before the Gemini quota ran out passed 44 of 45 (W24 failed, which led to BUG-07). The last run with `SKIP_GEMINI=1` passed 39 of 39.
 - **Real-browser checks:** headless Edge, driven over the DevTools protocol, against the production build:
@@ -91,11 +93,13 @@ The commits in brackets only record the phase's commit hash in IMPROVEMENT_LOG.m
 | BUG-05 | A practice question could be answered repeatedly through the API, including two simultaneous submits (checklist W31). | Extra attempts that inflated or shifted mastery. | Unique database constraint on `QuizAttempt.practiceQuestionId` (migration `20261004160000`) plus 409 "This question has already been answered." | `practice-answer.test.ts`; live: before the fix 201/201 with 2 rows, after 201/409 with 1 row | `f0a7f00` |
 | BUG-06 | The sign-in page said passwords were "encrypted" (checklist SEC7). | An inaccurate security claim (bcrypt hashes, it doesn't encrypt). | Now reads "Your password is securely hashed before it is stored." | `session.test.tsx` | `f0a7f00` |
 | BUG-07 | Gemini Interactions API errors (`RateLimitError` and other `APIError` subclasses) weren't recognised, so 429, 401/403 and 5xx became a misleading 502. | A rate-limited AI looked like a broken AI; quota exhaustion was hard to diagnose. | Errors are mapped by numeric HTTP status: 429 → 429, 401/403 → 503, ≥500 → 503. | `gemini.test.ts`; live: the quota error now returns 429 with a friendly message | `e11ac76` |
+| BUG-08 | The student's progress chart was loaded once at sign-in and only updated after a page reload (checklist D3). | After an attempt or practice answer, the chart and its summary sentence contradicted the updated mastery table. | A refresh counter re-fetches stored progress history after each saved attempt and practice answer; no Gemini call. The tutor's detail view was unaffected. | `progress-refresh.test.tsx` (fails on the old code); browser check of D3 pending | `642bcf9` |
 
 How they were found:
 - **BUG-01 to BUG-04:** reported by a previous AI session.
 - **BUG-05 and BUG-06:** found while writing the checklist in Phase 2.
 - **BUG-07:** found during the Phase 4 test run, when the Gemini quota ran out.
+- **BUG-08:** found while writing the manual run sheet, when the expected result for D3 turned out to need a page reload.
 
 ---
 
@@ -256,10 +260,10 @@ The LeaseLens column describes how App #1 was tested, as stated by the author.
 | Practice | App #1: LeaseLens | App #2: Acuity Tutors (Assignment 5.4) |
 |---|---|---|
 | Functional testing | Informal clicking through the app | 192-case checklist with IDs, feature traceability (49 features) and 9 test types; 97 cases with a recorded pass |
-| Automated tests | None | 88 (49 server, 39 client), plus a live API runner covering 45 cases |
+| Automated tests | None | 89 (49 server, 40 client), plus a live API runner covering 45 cases |
 | Edge-case / abuse input | Not tested | 35 weird-input cases (long text, emoji, spaces only, SQL injection, script tags, bad URL IDs, double-clicks) |
 | Security | No audit | 32-finding audit (12 fixed, 16 pass, 3 accepted, 1 open), 15 SEC checklist cases, 18 automated security tests, `npm audit` clean |
 | Accessibility | Not tested | 11 fixes (A11Y-01 to A11Y-11), 16 AX cases, axe-core 0 violations on 5 page states, 20 automated accessibility and contrast tests |
 | Responsible AI | No review | 7 measures (RAI-01 to RAI-07), RESPONSIBLE_AI.md covering 6 principles, 16 RAI cases, 21 automated tests (8 report, 4 prompt/output, 9 client) |
-| Bug tracking | None | IMPROVEMENT_LOG.md with 36 entries (ID, type, issue, risk, fix, verification, commit) |
-| Version control | — | A commit after each phase (12 commits), with each fix linked to its commit |
+| Bug tracking | None | IMPROVEMENT_LOG.md with 37 entries (ID, type, issue, risk, fix, verification, commit) |
+| Version control | — | A commit after each phase and fix (17 commits), with each fix linked to its commit |

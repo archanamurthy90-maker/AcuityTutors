@@ -113,7 +113,7 @@
 **Say:** "On a phone-sized screen the layout stacks, with no sideways page scrolling."
 
 ### 3:55–4:00 · Close
-**Say:** "Behind this demo are 88 automated tests, a 192-case test checklist, a 32-finding security audit, and a responsible-AI review — all documented in the repository. Thanks for watching."
+**Say:** "Behind this demo are 89 automated tests, a 192-case test checklist, a 32-finding security audit, and a responsible-AI review — all documented in the repository. Thanks for watching."
 
 ---
 

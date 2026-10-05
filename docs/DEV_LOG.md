@@ -252,3 +252,11 @@ The initial project structure was approved on 2026-09-30. Application feature im
 - Actions: Added a `progressVersion` counter to `WorkspacePage`, bumped after a successful attempt save and practice answer, as a dependency of the student progress effect. The tutor detail needed no change (tutors cannot add attempts; the detail fetches fresh history when opened). Added `client/tests/progress-refresh.test.tsx` and confirmed it fails on the previous `App.tsx`. Updated D3 (TEST_CHECKLIST, left for a browser check), run sheet row 45, FEATURE_INVENTORY STU-4, and IMPROVEMENT_LOG. `npm test` (49 server + 40 client), build, and client lint passed.
 - Errors: The first edit anchor matched both progress effects, so nothing was written; anchored on the student effect's own lines. The new test first failed because the refreshed history rendered just after Testing Library's default 1-second wait on this low-memory machine; gave the three waits a 5-second timeout.
 - Time spent: Not tracked.
+
+## Assignment 5.4 Report Notes Refresh
+
+- Timestamp: 2026-10-04T21:28:41-04:00
+- Prompt: Refresh TESTING_SECURITY_REPORT_NOTES.md after BUG-08.
+- Actions: Updated the reference commit to `456bc97`; commit history (17 commits, 15:13–21:18, with the docs and BUG-08 commits added to the table); improvement log 37 entries with 8 bugs; automated tests 89 (49 server, 40 client, adding `progress-refresh`); added BUG-08 to the bug table and how it was found; updated the LeaseLens comparison rows. Checklist counts (97 recorded, 95 not yet run) are unchanged because D3 still needs a browser check. Also changed the video script's closing line from 88 to 89 automated tests. No code changed.
+- Errors: None.
+- Time spent: Not tracked.
