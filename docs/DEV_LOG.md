@@ -260,3 +260,16 @@ The initial project structure was approved on 2026-09-30. Application feature im
 - Actions: Updated the reference commit to `456bc97`; commit history (17 commits, 15:13–21:18, with the docs and BUG-08 commits added to the table); improvement log 37 entries with 8 bugs; automated tests 89 (49 server, 40 client, adding `progress-refresh`); added BUG-08 to the bug table and how it was found; updated the LeaseLens comparison rows. Checklist counts (97 recorded, 95 not yet run) are unchanged because D3 still needs a browser check. Also changed the video script's closing line from 88 to 89 automated tests. No code changed.
 - Errors: None.
 - Time spent: Not tracked.
+
+# Assignment 6.2: Cloud Run and Cloud SQL Deployment
+
+Each deployment prompt is logged below with its timestamp, actions, and errors. Deployment is not configured until an entry records it working.
+
+## 6.2 Step 1: Production Readiness Check and Plan
+
+- Timestamp: 2026-10-06T19:00:46-04:00
+- Prompt: Assignment 6.2: deploy to Google Cloud Run with Cloud SQL PostgreSQL. No code changes yet. Check production readiness (build, Express serving client/dist, NODE_ENV=production behavior, CLIENT_ORIGIN/CORS, trust proxy, secure cookies, Prisma migrations, ALLOW_DEMO_SEED guard), give a short plan with estimated costs and the exact Google Cloud resources, and start a deployment section in DEV_LOG.
+- Actions: Read-only review of package scripts, server/client build, `createApp`, auth cookies, seed, Prisma schema, and README deployment notes. Ran `npm run build` (passed) and started `node server/dist/index.js` with NODE_ENV=production on port 3107 (stopped afterwards). Verified: health returns only {"status":"ok"}; `/`, `/login`, `/student`, `/tutor/abc` serve the SPA (200 HTML); unknown `/api` route returns JSON 404; login sets `HttpOnly; Secure; SameSite=Strict` with an 8-hour Max-Age; CSP and HSTS headers present; a foreign-Origin POST returns 403 and a same-host Origin is allowed; `node server/dist/seed.js` with NODE_ENV=production refuses to seed. `trust proxy` is set to 1 in production (to be confirmed against Cloud Run's X-Forwarded-For after deploy).
+- Readiness gaps found (not fixed; no code changes in this step): (1) the build never runs `prisma generate`, so a clean Cloud Build depends on the @prisma/client install script; (2) the `prisma` CLI is a root devDependency, so a production image may not contain it for `migrate deploy`; (3) no `engines.node` pin (local Node 24; buildpacks choose their default LTS); (4) no `.gcloudignore` (the untracked 1.8 MB test-plan .docx would be uploaded); (5) README still says deployment is not configured.
+- Errors / blockers: the Google Cloud CLI and Docker are not installed, and drive C: has about 91 MB free, which is too little to install the Cloud CLI. The repository has no git remote, so Cloud Shell would need the code uploaded or pushed to GitHub first.
+- Time spent: Not tracked.
