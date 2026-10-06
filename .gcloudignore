@@ -1,0 +1,8 @@
+# Files Cloud Build should not receive when deploying with `gcloud run deploy --source`.
+# Start from the git ignore rules (node_modules, dist folders, .env files).
+#!include:.gitignore
+.git
+.gitignore
+# Local-only files that are not part of the app.
+docs/*.docx
+docker-compose.yml
