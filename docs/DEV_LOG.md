@@ -281,3 +281,11 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Actions: (1) Root `build` now runs `prisma generate --schema prisma/schema.prisma` before the server and client builds. (2) Moved `prisma` from root devDependencies to dependencies so the production image can run `prisma migrate deploy`; lockfile updated (`npm ls prisma --omit=dev` finds it). (3) Added `engines.node: 24.x`, the version all tests ran on. (4) Added `.gcloudignore` (includes .gitignore rules; excludes .git, the local .docx test plan, and docker-compose.yml). `npm run build` passed including Prisma generation; `prisma migrate status`: 4 migrations, up to date; `npm test`: 49 server pass; client 39/40 on the first run, then 40/40 on two reruns (a timing failure on this low-memory machine; no client code changed); client lint passed.
 - Errors: Disk measured at 0.50 GB free on C: (Downloads 0.92 GB, Google app data 7.8 GB, Temp 0.38 GB, npm cache 0.21 GB); further disk scanning was stopped at the user's request. The pasted decisions contained the placeholders [PROJECT_ID] and [GITHUB_REPO_URL], so the GitHub remote could not be added yet.
 - Time spent: Not tracked.
+
+## 6.2 Step 3: GitHub Remote and Push
+
+- Timestamp: 2026-10-06T19:26:40-04:00
+- Prompt: Add the GitHub repository as the remote and push (first URL given: https://github.com/archanamurthy90-maker/acuity-tutors.git; corrected to https://github.com/archanamurthy90-maker/AcuityTutors).
+- Actions: Confirmed again that no `.env` file is tracked. Set `origin` to https://github.com/archanamurthy90-maker/AcuityTutors.git and pushed `main` (`f7bd4c1`), tracking `origin/main`. The repository is public, so Cloud Shell can clone it without credentials. The untracked local test-plan .docx was not pushed.
+- Errors: The first URL returned "Repository not found" (no repository by that name; Git Credential Manager was signed in as the owner, archanamurthy90-maker). The corrected URL worked.
+- Time spent: Not tracked.
