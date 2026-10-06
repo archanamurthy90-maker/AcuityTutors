@@ -289,3 +289,11 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Actions: Confirmed again that no `.env` file is tracked. Set `origin` to https://github.com/archanamurthy90-maker/AcuityTutors.git and pushed `main` (`f7bd4c1`), tracking `origin/main`. The repository is public, so Cloud Shell can clone it without credentials. The untracked local test-plan .docx was not pushed.
 - Errors: The first URL returned "Repository not found" (no repository by that name; Git Credential Manager was signed in as the owner, archanamurthy90-maker). The corrected URL worked.
 - Time spent: Not tracked.
+
+## 6.2 Step 4: Cloud Shell Block 1 Result, Block 2 Issued
+
+- Timestamp: 2026-10-06T19:30:49-04:00
+- Prompt: Block 1 done: APIs enabled, repository cloned in Cloud Shell; `gcloud sql instances list` returned 0 items; `gcloud run services list` shows only leaselens-git (us-central1). A $15 budget alert is set. Requested Block 2: Cloud SQL instance, database, user, secrets, and service account.
+- Actions: Issued Block 2 for Cloud Shell. Creates Cloud SQL instance acuity-tutors-db (PostgreSQL 17, Enterprise edition, db-f1-micro, 10 GB SSD, zonal, daily backups with 7 retained, public IP with no authorized networks), database acuity_tutors, and user acuity_app. Generates the database password and JWT secret inside Cloud Shell, reads the Gemini key with a hidden prompt, and stores all three only in Secret Manager (acuity-database-url, acuity-jwt-secret, acuity-gemini-api-key); no secret value is printed or shared in chat. Creates service account acuity-run-sa with roles/cloudsql.client and per-secret Secret Accessor. Separate instance from LeaseLens, since that project has no Cloud SQL instance to share.
+- Errors: None yet.
+- Time spent: Not tracked.
