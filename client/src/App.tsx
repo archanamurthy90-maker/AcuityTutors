@@ -52,7 +52,7 @@ type PracticeResult = {
 }
 
 // Shown in the footers; bump on each release so a deployment is easy to confirm.
-const APP_VERSION = 'v1.1'
+const APP_VERSION = 'v1.2'
 const registrationPasswordRule = 'Use at least 8 characters, including a letter and a number.'
 const AuthContext = createContext<{
   user: AuthUser | null

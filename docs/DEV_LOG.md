@@ -371,3 +371,10 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Actions: Per-task budgets (45 s questions, 30 s summaries); one same-model retry on a temporary 503/500 after 1.5 s when at least 15 s remain; shorter-output instructions in the question prompt; UI note now "This can take up to 45 seconds." for questions. Updated README and IMPROVEMENT_LOG. Tests: 63 server (5 new BUG-12) and 44 client pass; build and client lint pass.
 - Recommendation: revert to the default models (primary gemini-3.8-flash, fallback gemini-flash-latest), since both showed the same demand errors and the fallback only helps when one is busy. The durable fix for "high demand" errors is a billing-enabled (paid tier) Gemini key, which Google prioritises over free-tier traffic.
 - Time spent: Not tracked.
+
+## 6.2 Step 14: Continuous Deployment from GitHub
+
+- Timestamp: 2026-10-08T16:52:20-04:00
+- Prompt: Set up continuous deployment for acuity-tutors from GitHub archanamurthy90-maker/AcuityTutors (main) with a Cloud Build trigger keeping the current settings (us-east1, service account, Cloud SQL, secrets, env vars, timeout 60, max instances 1); give the exact console clicks to connect GitHub; make a tiny visible change, push it, and explain how to confirm the push triggered a build.
+- Actions: Bumped the footer version to v1.2 (v1.1 is already live) and committed it locally. The push is held until the trigger exists, so the deployment of v1.2 can only come from the trigger. Gave the console steps (Cloud Run "Set up continuous deployment" with Cloud Build, GitHub, ^main$, buildpacks), a Cloud Shell block that grants the build service accounts actAs on acuity-run-sa and lists the trigger, and verification steps (Cloud Build history, new revision, v1.2 in the live bundle). Continuous deployment updates only the container image, so the service settings are kept.
+- Time spent: Not tracked.
