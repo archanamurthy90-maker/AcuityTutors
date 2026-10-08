@@ -135,34 +135,29 @@ The student page groups mastery by subject, shows mastered/needs-practice counts
 
 ## Cloud Run and Cloud SQL deployment
 
-Deployment is **not configured or performed**. This is a deployment outline; verify region, IAM, networking, database sizing, backups, budgets, and billing choices for the target project before using it. Cloud SQL does not scale to zero, so set budget alerts and stop/start non-production instances deliberately.
+**Live:** https://acuity-tutors-1045685760887.us-east1.run.app. Deployed and verified on 2026-10-07: health check, sign-in page, and student and tutor sign-in. The steps and every error are logged in `docs/DEV_LOG.md` under "Assignment 6.2". Cloud SQL does not scale to zero (about $10–13 per month), so keep the budget alert, and stop the instance when the demo is not needed.
 
-Install and authenticate the Google Cloud CLI, select a billing-enabled project, then enable the deployment APIs:
+| Resource | Name and settings |
+|---|---|
+| Region | `us-east1` |
+| Cloud SQL | `acuity-tutors-db`: PostgreSQL 17, Enterprise edition, `db-f1-micro`, 10 GB SSD, zonal, daily backups (7 kept), public IP with no authorized networks (reachable only through the Cloud SQL connector). Database `acuity_tutors`, user `acuity_app`. |
+| Secret Manager | `acuity-database-url` (Unix-socket URL with `connection_limit=5`), `acuity-jwt-secret`, `acuity-gemini-api-key` |
+| Runtime service account | `acuity-run-sa`: `roles/cloudsql.client` plus Secret Accessor on those three secrets only |
+| Cloud Run service | `acuity-tutors`: built from source with Google Cloud buildpacks (root `build`, then `start`); `NODE_ENV=production`; `CLIENT_ORIGIN` set to both run.app URL forms; Cloud SQL attached; 512 MiB, 1 CPU, 0–1 instances; public access (the app enforces its own sign-in) |
+| Cloud Run Job | `acuity-migrate`: runs `prisma migrate deploy` from the service image. Rerun it after deploying a change that adds migrations: `gcloud run jobs execute acuity-migrate --region us-east1 --wait`. |
 
-```powershell
-gcloud config set project PROJECT_ID
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
+Demo data was loaded once by a temporary job (`acuity-seed`) with `ALLOW_DEMO_SEED=true`, and the job was then deleted; the live service never has that setting. The demo passwords in this README are public, so treat this database as a disposable demo.
+
+**Running a command inside the deployed image:** jobs built from the buildpack image use `--command /cnb/lifecycle/launcher`, with the command as `--args`, for example `node,node_modules/prisma/build/index.js,migrate,deploy,--schema,prisma/schema.prisma`.
+
+**Manual redeploy from Cloud Shell:**
+
+```bash
+gcloud run deploy acuity-tutors --source . --region us-east1
 ```
 
-1. Create a Cloud SQL for PostgreSQL instance, database, and least-privilege application user. Plan backups, high availability, and authorized network access. Record the instance connection name (`PROJECT_ID:REGION:INSTANCE_ID`).
-2. Create a Cloud Run runtime service account. Grant it `Cloud SQL Client` and `Secret Manager Secret Accessor` for only the required secrets.
-3. Store `DATABASE_URL`, `JWT_SECRET`, and `GEMINI_API_KEY` in Secret Manager. For the Cloud Run Cloud SQL Unix socket, use a URL shaped like `postgresql://DB_USER:ENCODED_PASSWORD@localhost/acuity_tutors?host=/cloudsql/PROJECT_ID:REGION:INSTANCE_ID&schema=public`. Percent-encode URL-reserved password characters. Keep all three values out of source control and browser variables.
-4. Apply committed migrations using a release step or one-off Cloud Run Job that has Cloud SQL attached and `DATABASE_URL` from Secret Manager. Run `npx prisma migrate deploy --schema prisma/schema.prisma`; do not run `prisma migrate dev` or destructive schema synchronization in production.
-5. Deploy the repository root with Cloud Run source deployment (Node.js buildpacks use the root workspace build/start scripts), attach the Cloud SQL instance, configure the runtime service account, and set `NODE_ENV=production`. For example:
-
-```powershell
-gcloud run deploy acuity-tutors `
-	--source . `
-	--region REGION `
-	--service-account SERVICE_ACCOUNT_EMAIL `
-	--add-cloudsql-instances PROJECT_ID:REGION:INSTANCE_ID `
-	--set-env-vars NODE_ENV=production `
-	--set-secrets DATABASE_URL=acuity-database-url:latest,JWT_SECRET=acuity-jwt-secret:latest,GEMINI_API_KEY=gemini-api-key:latest `
-	--allow-unauthenticated
-```
-
-The app provides its own JWT authentication, so `--allow-unauthenticated` allows requests to reach its login page; API authorization remains enforced by the app. Review this choice against organizational ingress policy before deployment. After deploying, verify `/api/health`, student/tutor sign-in, protected routes, Gemini generation, and Cloud SQL connectivity. Do not claim Cloud Run or Cloud SQL deployment is configured until these steps have actually succeeded.
+Existing settings (secrets, Cloud SQL, service account, environment variables, scaling) are kept unless flags change them.
 
 ## Current scaffold boundary
 
-The app includes authentication, student/tutor mastery dashboards with accuracy history, transactional attempt scoring, Gemini-generated saved practice questions with server-side grading, and roster-authorized tutor summaries. Roster enrollment management, broader quiz workflows, and Cloud deployment are not implemented or configured yet. Mastery must remain a deterministic calculation from append-only attempt history; generated AI content must not be treated as authoritative mastery data.
+The app includes authentication, student/tutor mastery dashboards with accuracy history, transactional attempt scoring, Gemini-generated saved practice questions with server-side grading, and roster-authorized tutor summaries. Roster enrollment management and broader quiz workflows are not implemented yet. Mastery must remain a deterministic calculation from append-only attempt history; generated AI content must not be treated as authoritative mastery data.

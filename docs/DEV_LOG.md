@@ -328,3 +328,11 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Prompt: Logs confirm Prisma P2021 (table does not exist); migrations were never applied to Cloud SQL. Requested three separate blocks: create and run acuity-migrate (prisma migrate deploy) with the same image, Cloud SQL connection, service account, and DATABASE_URL secret, confirming all 4 migrations applied; the seed block again (set +H, single quotes, URL set); the two sign-in checks; using the same command path as the seed job.
 - Actions: Reissued as three blocks. The migrate job now runs `node node_modules/prisma/build/index.js migrate deploy` through `/cnb/lifecycle/launcher`, the same pattern as the seed job (which reached the database), so it doesn't rely on npx resolving the CLI. Confirmation reads the job's Cloud Logging output and counts applied migrations.
 - Time spent: Not tracked.
+
+## 6.2 Step 9: Migrations, Seed, and Sign-in Succeeded (Deployment Verified)
+
+- Timestamp: 2026-10-07T21:40:06-04:00
+- Prompt: Live deploy works: both demo sign-ins return 200 and the user can log in. Next, the rubric requires GitHub integration with automatic deployments: set up continuous deployment for acuity-tutors from the GitHub repo (main) with a Cloud Build trigger keeping the same settings, list the console-only steps, and provide a tiny visible change (for example "v1.1" in the footer) to prove a push deploys.
+- Results: acuity-migrate applied the 4 migrations; the one-off acuity-seed job loaded the demo data and was deleted (ALLOW_DEMO_SEED count on the service: 0); Ava and tutor sign-in returned 200 at https://acuity-tutors-1045685760887.us-east1.run.app. Deployment is now configured and verified.
+- Actions: Rewrote the README deployment section to describe the live resources (Cloud SQL, secrets, service account, service, migrate job, launcher command form, manual redeploy) and removed "Cloud deployment not configured" from the scaffold boundary. Continuous deployment: chose the Cloud Run console's "Connect repo" (Cloud Build trigger on ^main$ with buildpacks), which updates the existing service's image and keeps its configuration. Prepared the v1.1 footer change locally, to be pushed only after the trigger exists.
+- Time spent: Not tracked.
