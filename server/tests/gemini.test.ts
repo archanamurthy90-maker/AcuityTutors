@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ApiError } from '@google/genai'
 import { z } from 'zod'
-import { buildPracticeQuestionPrompt, GEMINI_TIMEOUT_MS, geminiRequestOptions, logGeminiCall, withDeadline, buildTutorSummaryPrompt, containsUnsafeOutput, GeminiServiceError, generatedQuestionSchema as questionSchemaForTests, mapProviderError, parseGeminiJson, SYSTEM_INSTRUCTION } from '../src/services/gemini.js'
+import { buildPracticeQuestionPrompt, DEFAULT_GEMINI_FALLBACK_MODEL, DEFAULT_GEMINI_MODEL, geminiModels, runWithFallback, shouldTryFallback, GEMINI_TIMEOUT_MS, geminiRequestOptions, logGeminiCall, withDeadline, buildTutorSummaryPrompt, containsUnsafeOutput, GeminiServiceError, generatedQuestionSchema as questionSchemaForTests, mapProviderError, parseGeminiJson, SYSTEM_INSTRUCTION } from '../src/services/gemini.js'
 
 const questionSchema = z.object({
   question: z.string().min(10),
@@ -140,22 +140,83 @@ test('BUG-10: SDK timeout and abort errors map to 504', () => {
   assert.equal(mapProviderError(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })).statusCode, 504)
 })
 
-test('BUG-10: each Gemini call logs one line with task, outcome, status, and duration only', () => {
+test('BUG-11: each Gemini attempt logs one structured line with severity, model, and provider status only', () => {
   const lines: string[] = []
-  const original = { log: console.log, warn: console.warn }
+  const original = console.log
   console.log = (line: string) => { lines.push(line) }
-  console.warn = (line: string) => { lines.push(line) }
   try {
-    logGeminiCall('practice_question', Date.now() - 1200)
-    logGeminiCall('tutor_summary', Date.now(), new GeminiServiceError(429, 'busy', 'Rate limit exceeded for model (20 requests per day)'))
+    logGeminiCall('practice_question', 'gemini-3.8-flash', Date.now() - 1200)
+    logGeminiCall('tutor_summary', 'gemini-3.8-flash', Date.now(), Object.assign(new Error('503 The model is overloaded. key=AIzaSyFAKEFAKEFAKEFAKE'), { status: 503 }))
   } finally {
-    console.log = original.log
-    console.warn = original.warn
+    console.log = original
   }
   const [ok, failed] = lines.map((line) => JSON.parse(line) as Record<string, unknown>)
-  assert.equal(ok.event, 'gemini_call')
-  assert.equal(ok.outcome, 'ok')
+  assert.equal(ok.severity, 'INFO')
+  assert.equal(ok.status, 200)
   assert.ok((ok.elapsedMs as number) >= 1200)
-  assert.deepEqual(Object.keys(failed).sort(), ['elapsedMs', 'event', 'outcome', 'status', 'task'])
-  assert.equal(failed.status, 429)
+  assert.equal(failed.severity, 'WARNING')
+  assert.equal(failed.message, 'gemini_call failed (503)')
+  assert.equal(failed.model, 'gemini-3.8-flash')
+  assert.equal(failed.providerStatus, 503)
+  assert.match(failed.providerDetail as string, /overloaded/)
+  assert.doesNotMatch(failed.providerDetail as string, /AIza|FAKE/)
+  assert.deepEqual(Object.keys(failed).sort(), ['elapsedMs', 'event', 'message', 'model', 'outcome', 'providerDetail', 'providerStatus', 'severity', 'status', 'task'])
 })
+
+function silenceLogs<T>(run: () => Promise<T>) {
+  const original = console.log
+  console.log = () => {}
+  return run().finally(() => { console.log = original })
+}
+const providerError = (status: number, message = `HTTP ${status}`) => Object.assign(new Error(message), { status })
+
+test('BUG-11: models come from the environment, with a distinct fallback', () => {
+  assert.deepEqual(geminiModels({}), [DEFAULT_GEMINI_MODEL, DEFAULT_GEMINI_FALLBACK_MODEL])
+  assert.deepEqual(geminiModels({ GEMINI_MODEL: 'model-a', GEMINI_FALLBACK_MODEL: 'model-b' }), ['model-a', 'model-b'])
+  assert.deepEqual(geminiModels({ GEMINI_MODEL: 'model-a', GEMINI_FALLBACK_MODEL: 'model-a' }), ['model-a'])
+  assert.deepEqual(geminiModels({ GEMINI_FALLBACK_MODEL: 'none' }), [DEFAULT_GEMINI_MODEL])
+})
+
+test('BUG-11: a 5xx, 429, or 404 from the primary model falls back once to the second model', async () => {
+  for (const status of [500, 503, 429, 404]) {
+    const tried: string[] = []
+    const result = await silenceLogs(() => runWithFallback('practice_question', ['primary', 'fallback'], async (model) => {
+      tried.push(model)
+      if (model === 'primary') throw providerError(status)
+      return 'question'
+    }))
+    assert.deepEqual(tried, ['primary', 'fallback'], `status ${status}`)
+    assert.deepEqual(result, { value: 'question', model: 'fallback' })
+  }
+})
+
+test('BUG-11: bad requests, auth errors, and invalid output do not fall back', async () => {
+  assert.equal(shouldTryFallback(providerError(400)), false)
+  assert.equal(shouldTryFallback(providerError(403)), false)
+  assert.equal(shouldTryFallback(new GeminiServiceError(502, 'invalid', 'schema')), false)
+  const tried: string[] = []
+  await assert.rejects(
+    silenceLogs(() => runWithFallback('tutor_summary', ['primary', 'fallback'], async (model) => { tried.push(model); throw providerError(403) })),
+    (error: unknown) => error instanceof GeminiServiceError && error.statusCode === 503,
+  )
+  assert.deepEqual(tried, ['primary'])
+})
+
+test('BUG-11: when both models fail, the friendly error for the last failure is returned', async () => {
+  await assert.rejects(
+    silenceLogs(() => runWithFallback('practice_question', ['primary', 'fallback'], async () => { throw providerError(503, 'overloaded') })),
+    (error: unknown) => error instanceof GeminiServiceError && error.statusCode === 503 && !/overloaded/.test(error.publicMessage),
+  )
+})
+
+test('BUG-11: the fallback shares one deadline, so a slow primary cannot exceed the timeout', async () => {
+  const started = Date.now()
+  await assert.rejects(
+    silenceLogs(() => runWithFallback('practice_question', ['primary', 'fallback'], (_model, signal) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('This operation was aborted')))
+    }), 60)),
+    (error: unknown) => error instanceof GeminiServiceError && error.statusCode === 504,
+  )
+  assert.ok(Date.now() - started < 1000)
+})
+

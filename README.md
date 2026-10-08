@@ -23,6 +23,8 @@ A full-stack tutoring-center application foundation for focused practice and dur
 | `DATABASE_URL` | `server/.env` / Cloud Run secret | Prisma PostgreSQL connection string. |
 | `JWT_SECRET` | `server/.env` / Secret Manager | JWT signing secret; use a random value of at least 32 characters. |
 | `GEMINI_API_KEY` | `server/.env` / Secret Manager | Server-only Gemini API credential. Never prefix it with `VITE_`. |
+| `GEMINI_MODEL` | `server/.env` / Cloud Run env | Optional. Primary Gemini model; defaults to `gemini-3.8-flash`. |
+| `GEMINI_FALLBACK_MODEL` | `server/.env` / Cloud Run env | Optional. Model tried once if the primary returns 5xx, 429, or 404; defaults to `gemini-flash-latest`. Set to `none` to disable. |
 | `PORT` | `server/.env` / Cloud Run runtime | Express listen port; defaults to `3001` locally. Cloud Run supplies this automatically. |
 | `NODE_ENV` | process environment | Set to `production` in deployment to enable secure cookies, static frontend serving, `trust proxy`, the minimal health response, and redacted error logs. |
 | `CLIENT_ORIGIN` | `server/.env` / Cloud Run env | Comma-separated CORS allowlist for browser origins; defaults to `http://localhost:5173`. Same-host requests are always allowed. |
@@ -100,7 +102,7 @@ The API provides `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/a
 
 ## Gemini practice and tutor summaries
 
-Set `GEMINI_API_KEY` in the ignored `server/.env`. Keep it there: never use a `VITE_` variable or send the key to the browser. The server uses Google's official `@google/genai` SDK and the stable `gemini-3.8-flash` model (current stable general model as of 2026-10-01) through the Interactions API. Requests use structured JSON output, a 30-second timeout, and `store: false`; responses are validated again on the server.
+Set `GEMINI_API_KEY` in the ignored `server/.env`. Keep it there: never use a `VITE_` variable or send the key to the browser. The server uses Google's official `@google/genai` SDK through the Interactions API, with `gemini-3.8-flash` as the primary model and `gemini-flash-latest` as a one-time fallback when the primary is overloaded, rate-limited, or unavailable (both configurable; see the table above). Requests use structured JSON output, low thinking effort on Gemini 3 models, no SDK retries, a hard 30-second deadline shared by both attempts, and `store: false`; responses are validated again on the server. Each attempt writes one structured log line (`gemini_call`: task, model, status, provider status, redacted provider message, duration) with no prompts or student data. The model that produced each practice question is stored with it.
 
 `POST /api/student/practice-questions` selects the signed-in student's weakest topic, asks Gemini for one original four-choice question at a matching difficulty, validates and saves it, and returns the question/options without the answer key. `POST /api/student/practice-questions/:questionId/answer` accepts one of those options, grades it on the server, records a `PRACTICE` QuizAttempt, and recalculates mastery in the same transaction. Question ownership is checked against the signed-in student. Each question can be answered once: a unique database constraint on `QuizAttempt.practiceQuestionId` blocks duplicates, and a second or simultaneous answer returns 409 “This question has already been answered.” Needs Practice produces easy questions, Developing medium, Mastered hard; Not Enough Data uses easy until there is enough evidence.
 

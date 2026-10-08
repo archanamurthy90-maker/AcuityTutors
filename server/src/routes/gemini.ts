@@ -3,7 +3,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth, requireRole } from '../auth.js'
 import { createAiRateLimiters } from '../middleware/rateLimits.js'
-import { GEMINI_MODEL, generatePracticeQuestion, generateTutorSummary } from '../services/gemini.js'
+import { generatePracticeQuestion, generateTutorSummary } from '../services/gemini.js'
 import { recalculateTopicMastery } from '../services/mastery.js'
 
 const answerSchema = z.object({ answer: z.string().trim().min(1, 'Choose an answer.').max(300) })
@@ -52,7 +52,7 @@ export function createGeminiRouter(prisma: PrismaClient, limits = createAiRateLi
         return rankDifference || left.score - right.score
       })[0]
       const difficulty = questionDifficulty(weakest.status)
-      const generated = await generatePracticeQuestion({
+      const { value: generated, model } = await generatePracticeQuestion({
         subject: weakest.topic.subject.name,
         topic: weakest.topic.name,
         accuracy: weakest.score,
@@ -69,7 +69,7 @@ export function createGeminiRouter(prisma: PrismaClient, limits = createAiRateLi
           correctAnswer: generated.correctAnswer,
           explanation: generated.explanation,
           difficulty: difficulty.difficulty,
-          model: GEMINI_MODEL,
+          model,
         },
         select: { id: true, topicId: true, prompt: true, choices: true, difficulty: true, topic: { select: { name: true } } },
       })

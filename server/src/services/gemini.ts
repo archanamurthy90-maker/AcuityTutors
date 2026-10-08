@@ -2,7 +2,14 @@ import { ApiError, GoogleGenAI } from '@google/genai'
 import { z } from 'zod'
 import type { MasteryStatus } from './mastery.js'
 
-export const GEMINI_MODEL = 'gemini-3.8-flash'
+// Primary and fallback models; override with GEMINI_MODEL / GEMINI_FALLBACK_MODEL without a code change.
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash'
+export const DEFAULT_GEMINI_FALLBACK_MODEL = 'gemini-flash-latest'
+export function geminiModels(env: NodeJS.ProcessEnv = process.env): string[] {
+  const primary = env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL
+  const fallback = env.GEMINI_FALLBACK_MODEL?.trim() || DEFAULT_GEMINI_FALLBACK_MODEL
+  return fallback === primary || fallback === 'none' ? [primary] : [primary, fallback]
+}
 // Must stay well below the Cloud Run request timeout so the app answers with its own 504 first.
 export const GEMINI_TIMEOUT_MS = 30_000
 
@@ -153,21 +160,80 @@ export async function withDeadline<T>(run: (signal: AbortSignal) => Promise<T>, 
 }
 
 type GeminiTask = 'practice_question' | 'tutor_summary'
+export type GeminiResult<T> = { value: T; model: string }
 
-// One structured line per call (no prompts, output, or student data) so Cloud Run logs show
-// whether failures are quota (429), timeouts (504), configuration (503), or invalid output (502).
-export function logGeminiCall(task: GeminiTask, startedAt: number, error?: GeminiServiceError) {
-  const entry = { event: 'gemini_call', task, outcome: error ? 'error' : 'ok', status: error?.statusCode ?? 200, elapsedMs: Date.now() - startedAt }
-  if (error) console.warn(JSON.stringify(entry))
-  else console.log(JSON.stringify(entry))
+// Provider error text, shortened and with anything that looks like an API key removed.
+function providerDetail(error: unknown) {
+  const text = error instanceof Error ? error.message : String(error)
+  return text.replace(/AIza[0-9A-Za-z_-]{10,}/g, '[redacted]').replace(/key=[^&\s]+/gi, 'key=[redacted]').slice(0, 200)
 }
 
-async function generateJson<T>(task: GeminiTask, input: string, responseSchema: object, outputSchema: z.ZodType<T>): Promise<T> {
-  const startedAt = Date.now()
+// One structured line per attempt (no prompts, output, or student data). Cloud Run reads
+// "severity" and "message", so failures show up in severity>=WARNING queries.
+export function logGeminiCall(task: GeminiTask, model: string, startedAt: number, error?: unknown) {
+  const mapped = error === undefined ? undefined : mapProviderError(error)
+  const entry = {
+    severity: mapped ? 'WARNING' : 'INFO',
+    message: mapped ? `gemini_call failed (${mapped.statusCode})` : 'gemini_call ok',
+    event: 'gemini_call',
+    task,
+    model,
+    outcome: mapped ? 'error' : 'ok',
+    status: mapped?.statusCode ?? 200,
+    providerStatus: error === undefined ? undefined : providerStatus(error) ?? undefined,
+    providerDetail: error === undefined || error instanceof GeminiServiceError && error.statusCode === 504 ? undefined : providerDetail(error),
+    elapsedMs: Date.now() - startedAt,
+  }
+  console.log(JSON.stringify(entry))
+}
+
+// Overloaded, rate-limited, or unknown models are worth one try on the fallback model.
+export function shouldTryFallback(error: unknown) {
+  const status = providerStatus(error)
+  return status === 429 || status === 404 || (status !== null && status >= 500)
+}
+
+// Tries each model in order inside one shared deadline; stops at the first success or at an
+// error the fallback cannot fix (bad request, auth, invalid output, timeout).
+export async function runWithFallback<T>(
+  task: GeminiTask,
+  models: string[],
+  attempt: (model: string, signal: AbortSignal) => Promise<T>,
+  timeoutMs = GEMINI_TIMEOUT_MS,
+): Promise<GeminiResult<T>> {
+  let current = models[0]
+  let startedAt = Date.now()
   try {
-    const client = createClient()
-    const interaction = await withDeadline((signal) => client.interactions.create({
-      model: GEMINI_MODEL,
+    return await withDeadline(async (signal) => {
+      for (const [index, model] of models.entries()) {
+        current = model
+        startedAt = Date.now()
+        try {
+          const value = await attempt(model, signal)
+          logGeminiCall(task, model, startedAt)
+          return { value, model }
+        } catch (error) {
+          if (signal.aborted) throw error
+          logGeminiCall(task, model, startedAt, error)
+          if (index === models.length - 1 || !shouldTryFallback(error)) throw mapProviderError(error)
+        }
+      }
+      throw new Error('No Gemini model configured.')
+    }, timeoutMs)
+  } catch (error) {
+    if (error instanceof GeminiServiceError && error.statusCode === 504) logGeminiCall(task, current, startedAt, error)
+    throw mapProviderError(error)
+  }
+}
+
+// Low thinking effort for these short tasks, only on models that support thinking_level.
+const supportsThinkingLevel = (model: string) => /^gemini-3/.test(model)
+
+async function generateJson<T>(task: GeminiTask, input: string, responseSchema: object, outputSchema: z.ZodType<T>): Promise<GeminiResult<T>> {
+  const client = createClient()
+  return runWithFallback(task, geminiModels(), async (model, signal) => {
+    const interaction = await client.interactions.create({
+      model,
       system_instruction: SYSTEM_INSTRUCTION,
       input,
       response_format: {
@@ -175,19 +241,12 @@ async function generateJson<T>(task: GeminiTask, input: string, responseSchema: 
         mime_type: 'application/json',
         schema: responseSchema,
       },
-      // Short, structured tasks: low thinking keeps latency down.
-      generation_config: { thinking_level: 'low' },
+      ...(supportsThinkingLevel(model) ? { generation_config: { thinking_level: 'low' as const } } : {}),
       store: false,
-    }, geminiRequestOptions(signal)))
+    }, geminiRequestOptions(signal))
     if (!interaction.output_text) throw new Error('Gemini returned no text.')
-    const result = parseGeminiJson(interaction.output_text, outputSchema)
-    logGeminiCall(task, startedAt)
-    return result
-  } catch (error) {
-    const mapped = mapProviderError(error)
-    logGeminiCall(task, startedAt, mapped)
-    throw mapped
-  }
+    return parseGeminiJson(interaction.output_text, outputSchema)
+  })
 }
 
 export const SYSTEM_INSTRUCTION = [
@@ -237,10 +296,10 @@ export function buildTutorSummaryPrompt(topics: StudentTopicSummary[]) {
   ].join('\n')
 }
 
-export function generatePracticeQuestion(input: PracticeQuestionInput): Promise<GeneratedQuestion> {
+export function generatePracticeQuestion(input: PracticeQuestionInput): Promise<GeminiResult<GeneratedQuestion>> {
   return generateJson('practice_question', buildPracticeQuestionPrompt(input), questionResponseSchema, generatedQuestionSchema)
 }
 
 export function generateTutorSummary(topics: StudentTopicSummary[]): Promise<string> {
-  return generateJson('tutor_summary', buildTutorSummaryPrompt(topics), summaryResponseSchema, tutorSummarySchema).then((result) => result.summary)
+  return generateJson('tutor_summary', buildTutorSummaryPrompt(topics), summaryResponseSchema, tutorSummarySchema).then((result) => result.value.summary)
 }

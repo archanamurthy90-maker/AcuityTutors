@@ -6,7 +6,7 @@ How Acuity Tutors uses generative AI, the risks we considered, and what the app 
 
 | Feature | Who sees it | What the AI does | What the AI does **not** do |
 |---|---|---|---|
-| **Practice questions** (`POST /api/student/practice-questions`) | Students | Gemini (`gemini-3.8-flash`) writes one multiple-choice question, four options, an answer key, and a short explanation for the student's weakest topic, at a difficulty chosen by the app. | It does not choose the topic or difficulty, see who the student is, or calculate mastery. |
+| **Practice questions** (`POST /api/student/practice-questions`) | Students | Gemini (`gemini-3.8-flash`, or the `gemini-flash-latest` fallback; the model used is stored with each question) writes one multiple-choice question, four options, an answer key, and a short explanation for the student's weakest topic, at a difficulty chosen by the app. | It does not choose the topic or difficulty, see who the student is, or calculate mastery. |
 | **Tutor summaries** (`POST /api/tutor/students/:id/summary`) | Tutors | Gemini writes up to three sentences suggesting what the tutor could focus on next, from the student's topic classifications. | It does not change scores, make decisions, or see the student's name. |
 
 **Mastery is never decided by AI.** Accuracy is `correct ÷ total attempts` per topic, classified by a fixed, tested rule (`server/src/services/mastery.ts`): 80%+ Mastered, 60–79% Developing, below 60% Needs Practice, fewer than 3 attempts Not enough data. The server grades answers by comparing the student's choice with the stored answer key; the AI is not asked whether an answer is right.
