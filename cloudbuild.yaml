@@ -1,0 +1,13 @@
+# Continuous deployment: the Cloud Build trigger on main runs this file.
+# It deploys the repository with Cloud Run source deployment (Google Cloud buildpacks),
+# which replaces only the container image; the service's secrets, Cloud SQL connection,
+# service account, environment variables, timeout, and scaling settings are kept.
+# Database migrations are not run here: after a change that adds one, run
+#   gcloud run jobs execute acuity-migrate --region us-east1 --wait
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args: ['run', 'deploy', 'acuity-tutors', '--source=.', '--region=us-east1', '--quiet']
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1800s

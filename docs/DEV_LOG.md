@@ -378,3 +378,11 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Prompt: Set up continuous deployment for acuity-tutors from GitHub archanamurthy90-maker/AcuityTutors (main) with a Cloud Build trigger keeping the current settings (us-east1, service account, Cloud SQL, secrets, env vars, timeout 60, max instances 1); give the exact console clicks to connect GitHub; make a tiny visible change, push it, and explain how to confirm the push triggered a build.
 - Actions: Bumped the footer version to v1.2 (v1.1 is already live) and committed it locally. The push is held until the trigger exists, so the deployment of v1.2 can only come from the trigger. Gave the console steps (Cloud Run "Set up continuous deployment" with Cloud Build, GitHub, ^main$, buildpacks), a Cloud Shell block that grants the build service accounts actAs on acuity-run-sa and lists the trigger, and verification steps (Cloud Build history, new revision, v1.2 in the live bundle). Continuous deployment updates only the container image, so the service settings are kept.
 - Time spent: Not tracked.
+
+## 6.2 Step 15: cloudbuild.yaml for the GitHub Trigger
+
+- Timestamp: 2026-10-08T18:04:57-04:00
+- Prompt: The GitHub trigger works (the v1.2 push started build 157598cd) but failed because it ran a docker build and the repository has no Dockerfile (earlier error: "lstat /workspace/Dockerfile: no such file or directory"). The trigger now reads /cloudbuild.yaml from the repository. Asked to create cloudbuild.yaml (one step: gcr.io/google.com/cloudsdktool/cloud-sdk:slim, entrypoint gcloud, args run deploy acuity-tutors --source=. --region=us-east1 --quiet; logging CLOUD_LOGGING_ONLY; timeout 1800s), ensure .gcloudignore does not exclude it, commit, push, and explain what to look for in Cloud Build history.
+- Context: Cloud Shell confirmed actAs on acuity-run-sa for both build service accounts and the trigger rmgpgab-acuity-tutors-us-east1-archanamurthy90-maker-AcuityTxoe on AcuityTutors, branch ^main$.
+- Actions: Added cloudbuild.yaml at the repository root exactly as specified, with a comment explaining that settings are kept and migrations are separate. Checked that neither .gcloudignore nor .gitignore excludes it (git check-ignore: not ignored). Documented continuous deployment in README. Pushed to main to start the trigger.
+- Time spent: Not tracked.

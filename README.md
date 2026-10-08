@@ -152,6 +152,8 @@ Demo data was loaded once by a temporary job (`acuity-seed`) with `ALLOW_DEMO_SE
 
 **Running a command inside the deployed image:** jobs built from the buildpack image use `--command /cnb/lifecycle/launcher`, with the command as `--args`, for example `node,node_modules/prisma/build/index.js,migrate,deploy,--schema,prisma/schema.prisma`.
 
+**Continuous deployment:** every push to `main` on GitHub (`archanamurthy90-maker/AcuityTutors`) starts the Cloud Build trigger `rmgpgab-acuity-tutors-us-east1-…`, which runs `cloudbuild.yaml`: one step that runs `gcloud run deploy acuity-tutors --source=. --region=us-east1 --quiet`. That source deploy builds with buildpacks and replaces only the container image, so the service's settings are kept. The trigger does not run migrations; run `acuity-migrate` after deploying a change that adds one. The footer version (`APP_VERSION` in `client/src/App.tsx`) makes it easy to confirm which build is live.
+
 **Manual redeploy from Cloud Shell:**
 
 ```bash
