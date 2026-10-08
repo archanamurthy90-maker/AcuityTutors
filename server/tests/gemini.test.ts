@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ApiError } from '@google/genai'
 import { z } from 'zod'
-import { buildPracticeQuestionPrompt, DEFAULT_GEMINI_FALLBACK_MODEL, DEFAULT_GEMINI_MODEL, geminiModels, runWithFallback, shouldTryFallback, GEMINI_TIMEOUT_MS, geminiRequestOptions, logGeminiCall, withDeadline, buildTutorSummaryPrompt, containsUnsafeOutput, GeminiServiceError, generatedQuestionSchema as questionSchemaForTests, mapProviderError, parseGeminiJson, SYSTEM_INSTRUCTION } from '../src/services/gemini.js'
+import { buildPracticeQuestionPrompt, isTemporaryOverload, TASK_TIMEOUT_MS, DEFAULT_GEMINI_FALLBACK_MODEL, DEFAULT_GEMINI_MODEL, geminiModels, runWithFallback, shouldTryFallback, GEMINI_TIMEOUT_MS, geminiRequestOptions, logGeminiCall, withDeadline, buildTutorSummaryPrompt, containsUnsafeOutput, GeminiServiceError, generatedQuestionSchema as questionSchemaForTests, mapProviderError, parseGeminiJson, SYSTEM_INSTRUCTION } from '../src/services/gemini.js'
 
 const questionSchema = z.object({
   question: z.string().min(10),
@@ -169,6 +169,7 @@ function silenceLogs<T>(run: () => Promise<T>) {
   return run().finally(() => { console.log = original })
 }
 const providerError = (status: number, message = `HTTP ${status}`) => Object.assign(new Error(message), { status })
+const noRetry = { minRetryBudgetMs: Number.MAX_SAFE_INTEGER }
 
 test('BUG-11: models come from the environment, with a distinct fallback', () => {
   assert.deepEqual(geminiModels({}), [DEFAULT_GEMINI_MODEL, DEFAULT_GEMINI_FALLBACK_MODEL])
@@ -184,7 +185,7 @@ test('BUG-11: a 5xx, 429, or 404 from the primary model falls back once to the s
       tried.push(model)
       if (model === 'primary') throw providerError(status)
       return 'question'
-    }))
+    }, noRetry))
     assert.deepEqual(tried, ['primary', 'fallback'], `status ${status}`)
     assert.deepEqual(result, { value: 'question', model: 'fallback' })
   }
@@ -204,7 +205,7 @@ test('BUG-11: bad requests, auth errors, and invalid output do not fall back', a
 
 test('BUG-11: when both models fail, the friendly error for the last failure is returned', async () => {
   await assert.rejects(
-    silenceLogs(() => runWithFallback('practice_question', ['primary', 'fallback'], async () => { throw providerError(503, 'overloaded') })),
+    silenceLogs(() => runWithFallback('practice_question', ['primary', 'fallback'], async () => { throw providerError(503, 'overloaded') }, noRetry)),
     (error: unknown) => error instanceof GeminiServiceError && error.statusCode === 503 && !/overloaded/.test(error.publicMessage),
   )
 })
@@ -214,9 +215,58 @@ test('BUG-11: the fallback shares one deadline, so a slow primary cannot exceed 
   await assert.rejects(
     silenceLogs(() => runWithFallback('practice_question', ['primary', 'fallback'], (_model, signal) => new Promise((_resolve, reject) => {
       signal.addEventListener('abort', () => reject(new Error('This operation was aborted')))
-    }), 60)),
+    }), { timeoutMs: 60 })),
     (error: unknown) => error instanceof GeminiServiceError && error.statusCode === 504,
   )
   assert.ok(Date.now() - started < 1000)
+})
+
+test('BUG-12: practice questions get a longer budget than summaries, both below the 60 s Cloud Run timeout', () => {
+  assert.equal(TASK_TIMEOUT_MS.practice_question, 45_000)
+  assert.equal(TASK_TIMEOUT_MS.tutor_summary, 30_000)
+  for (const timeout of Object.values(TASK_TIMEOUT_MS)) assert.ok(timeout <= 50_000, 'leave at least 10 s before Cloud Run cuts the request')
+  assert.equal(geminiRequestOptions(new AbortController().signal, TASK_TIMEOUT_MS.practice_question).timeout, 45_000)
+})
+
+test('BUG-12: a "high demand" 503 retries the same model once after a pause, then succeeds', async () => {
+  const tried: string[] = []
+  const started = Date.now()
+  const result = await silenceLogs(() => runWithFallback('practice_question', ['primary', 'fallback'], async (model) => {
+    tried.push(model)
+    if (tried.length === 1) throw providerError(503, '503 primary is currently experiencing high demand')
+    return 'question'
+  }, { retryDelayMs: 40, minRetryBudgetMs: 0 }))
+  assert.deepEqual(tried, ['primary', 'primary'])
+  assert.deepEqual(result, { value: 'question', model: 'primary' })
+  assert.ok(Date.now() - started >= 40, 'waits before retrying')
+})
+
+test('BUG-12: an overload retries once, then falls back; 429 and 404 skip the same-model retry', async () => {
+  const tried: string[] = []
+  const result = await silenceLogs(() => runWithFallback('practice_question', ['primary', 'fallback'], async (model) => {
+    tried.push(model)
+    if (model === 'primary') throw providerError(503)
+    return 'question'
+  }, { retryDelayMs: 0, minRetryBudgetMs: 0 }))
+  assert.deepEqual(tried, ['primary', 'primary', 'fallback'])
+  assert.equal(result.model, 'fallback')
+  assert.equal(isTemporaryOverload(providerError(429)), false)
+  assert.equal(isTemporaryOverload(providerError(404)), false)
+  assert.equal(isTemporaryOverload(providerError(500)), true)
+})
+
+test('BUG-12: no same-model retry when too little budget is left', async () => {
+  const tried: string[] = []
+  await silenceLogs(() => runWithFallback('practice_question', ['primary', 'fallback'], async (model) => {
+    tried.push(model)
+    if (model === 'primary') throw providerError(503)
+    return 'question'
+  }, { timeoutMs: 5_000, retryDelayMs: 1_500, minRetryBudgetMs: 15_000 }))
+  assert.deepEqual(tried, ['primary', 'fallback'])
+})
+
+test('BUG-12: the question prompt asks for short output so it can finish within the budget', () => {
+  const prompt = buildPracticeQuestionPrompt({ subject: 'Science', topic: 'Life Science', accuracy: 40, status: 'NEEDS_PRACTICE', attempts: 5, difficulty: 'easy' })
+  assert.match(prompt, /question under 50 words, each option under 15 words, and the explanation under 60 words/)
 })
 

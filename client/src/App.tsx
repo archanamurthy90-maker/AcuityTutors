@@ -531,7 +531,7 @@ function WorkspacePage() {
 
   async function handleGenerateQuestion() {
     setGeneratingQuestion(true)
-    setAnnouncement('Creating a practice question. This can take up to 30 seconds.')
+    setAnnouncement('Creating a practice question. This can take up to 45 seconds.')
     setPracticeError('')
     setPracticeResult(null)
     setSelectedAnswer('')
@@ -664,7 +664,7 @@ function WorkspacePage() {
                   </button>
                 </div>
                 <p className="ai-practice-intro">Gemini, an AI model, writes a fresh question at a difficulty matched to your current mastery. AI questions can contain mistakes, so report any that look wrong.</p>
-                {generatingQuestion && <p className="ai-wait-note">This can take up to 30 seconds.</p>}
+                {generatingQuestion && <p className="ai-wait-note">This can take up to 45 seconds.</p>}
                 {scores.length === 0 && <p className="practice-empty-note">Log your first quiz attempt before generating targeted practice.</p>}
                 {weakest && <div className="weakest-topic-cue"><span>TOP PRIORITY</span><strong>{weakest.topic.subject.name} · {weakest.topic.name}</strong><span className={`mastery-status mastery-status-${weakest.status.toLowerCase().replaceAll('_', '-')}`}>{statusLabel(weakest.status)}</span></div>}
                 {practiceError && <p className="data-error" role="alert">{practiceError}</p>}

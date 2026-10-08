@@ -12,6 +12,9 @@ export function geminiModels(env: NodeJS.ProcessEnv = process.env): string[] {
 }
 // Must stay well below the Cloud Run request timeout so the app answers with its own 504 first.
 export const GEMINI_TIMEOUT_MS = 30_000
+// Questions return several fields and took about 26 s on the free tier, so they get a longer budget.
+// Both stay below the Cloud Run request timeout (60 s).
+export const TASK_TIMEOUT_MS = { practice_question: 45_000, tutor_summary: GEMINI_TIMEOUT_MS } as const
 
 // Learners and tutors only ever see plain text, so links, email addresses, and markup in
 // model output are treated as unsafe and the whole response is rejected.
@@ -138,8 +141,8 @@ export function parseGeminiJson<T>(outputText: string, schema: z.ZodType<T>): T 
 
 // The Interactions client ignores the client-level httpOptions.timeout (it calls with no timeout
 // and up to 4 retries), so each call gets its own timeout, no retries, and an abort signal.
-export function geminiRequestOptions(signal: AbortSignal) {
-  return { timeout: GEMINI_TIMEOUT_MS, maxRetries: 0, fetchOptions: { signal } }
+export function geminiRequestOptions(signal: AbortSignal, timeoutMs: number = GEMINI_TIMEOUT_MS) {
+  return { timeout: timeoutMs, maxRetries: 0, fetchOptions: { signal } }
 }
 
 // Hard deadline independent of the SDK: abort the request and fail with the friendly 504.
@@ -193,29 +196,54 @@ export function shouldTryFallback(error: unknown) {
   return status === 429 || status === 404 || (status !== null && status >= 500)
 }
 
-// Tries each model in order inside one shared deadline; stops at the first success or at an
-// error the fallback cannot fix (bad request, auth, invalid output, timeout).
+// A "high demand" 503 is usually brief, so the same model gets one more try after a short pause.
+export function isTemporaryOverload(error: unknown) {
+  const status = providerStatus(error)
+  return status === 503 || status === 500
+}
+
+export type FallbackOptions = { timeoutMs?: number; retryDelayMs?: number; minRetryBudgetMs?: number }
+
+function pause(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('This operation was aborted')) }, { once: true })
+  })
+}
+
+// Tries each model in order inside one shared deadline: one retry of the same model on a
+// temporary overload (when enough budget is left), then the fallback model. Stops at the first
+// success or at an error the fallback cannot fix (bad request, auth, invalid output, timeout).
 export async function runWithFallback<T>(
   task: GeminiTask,
   models: string[],
   attempt: (model: string, signal: AbortSignal) => Promise<T>,
-  timeoutMs = GEMINI_TIMEOUT_MS,
+  { timeoutMs = TASK_TIMEOUT_MS[task], retryDelayMs = 1_500, minRetryBudgetMs = 15_000 }: FallbackOptions = {},
 ): Promise<GeminiResult<T>> {
+  const deadlineAt = Date.now() + timeoutMs
   let current = models[0]
   let startedAt = Date.now()
   try {
     return await withDeadline(async (signal) => {
       for (const [index, model] of models.entries()) {
         current = model
-        startedAt = Date.now()
-        try {
-          const value = await attempt(model, signal)
-          logGeminiCall(task, model, startedAt)
-          return { value, model }
-        } catch (error) {
-          if (signal.aborted) throw error
-          logGeminiCall(task, model, startedAt, error)
-          if (index === models.length - 1 || !shouldTryFallback(error)) throw mapProviderError(error)
+        for (let tryNumber = 1; ; tryNumber += 1) {
+          startedAt = Date.now()
+          try {
+            const value = await attempt(model, signal)
+            logGeminiCall(task, model, startedAt)
+            return { value, model }
+          } catch (error) {
+            if (signal.aborted) throw error
+            logGeminiCall(task, model, startedAt, error)
+            const budgetLeft = deadlineAt - Date.now()
+            if (tryNumber === 1 && isTemporaryOverload(error) && budgetLeft >= minRetryBudgetMs + retryDelayMs) {
+              await pause(retryDelayMs, signal)
+              continue
+            }
+            if (index === models.length - 1 || !shouldTryFallback(error)) throw mapProviderError(error)
+            break
+          }
         }
       }
       throw new Error('No Gemini model configured.')
@@ -243,7 +271,7 @@ async function generateJson<T>(task: GeminiTask, input: string, responseSchema: 
       },
       ...(supportsThinkingLevel(model) ? { generation_config: { thinking_level: 'low' as const } } : {}),
       store: false,
-    }, geminiRequestOptions(signal))
+    }, geminiRequestOptions(signal, TASK_TIMEOUT_MS[task]))
     if (!interaction.output_text) throw new Error('Gemini returned no text.')
     return parseGeminiJson(interaction.output_text, outputSchema)
   })
@@ -277,6 +305,7 @@ export function buildPracticeQuestionPrompt(input: PracticeQuestionInput) {
     'Create one fresh, age-appropriate multiple-choice practice question for a middle-school learner on the topic described in <topic_data>.',
     `Difficulty: ${input.difficulty}.`,
     'Write exactly four distinct options and make correctAnswer exactly match one option.',
+    'Keep it short so it can be answered quickly: the question under 50 words, each option under 15 words, and the explanation under 60 words.',
     'The explanation should briefly teach the key idea without mentioning mastery scores.',
     'Return only the JSON object matching the response schema.',
     topicDataBlock({ subject: input.subject, topic: input.topic, accuracyPercent: input.accuracy, masteryLevel: input.status, priorAttempts: input.attempts }),

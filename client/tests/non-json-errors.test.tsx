@@ -62,7 +62,7 @@ describe('BUG-09: non-JSON error responses show a friendly message', () => {
     expect(document.body.textContent).not.toMatch(/Unexpected token|is not valid JSON/)
   })
 
-  it('shows "This can take up to 30 seconds" while a question is being generated', async () => {
+  it('shows "This can take up to 45 seconds" while a question is being generated', async () => {
     let release: (response: Response) => void = () => {}
     stubApi({
       'GET /auth/me': json({ user: { id: 'u1', email: 'ava@acuity.local', role: 'STUDENT', displayName: 'Ava Chen' } }),
@@ -76,9 +76,9 @@ describe('BUG-09: non-JSON error responses show a friendly message', () => {
     window.history.replaceState(null, '', '/student')
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: 'Generate question' }))
-    expect(await screen.findByText('This can take up to 30 seconds.')).toBeTruthy()
+    expect(await screen.findByText('This can take up to 45 seconds.')).toBeTruthy()
     release(upstreamTimeout())
     await screen.findByText(timeoutMessage)
-    expect(screen.queryByText('This can take up to 30 seconds.')).toBeNull()
+    expect(screen.queryByText('This can take up to 45 seconds.')).toBeNull()
   })
 })
