@@ -313,3 +313,11 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Actions: Cloud Run service acuity-tutors deployed from source (us-east1); production health and sign-in page confirmed by the user. Issued Block 4: set CLIENT_ORIGIN to both Cloud Run URL forms (the project-number URL above and the status URL); create Cloud Run Job acuity-migrate from the service image (`prisma migrate deploy` through the buildpack launcher, Cloud SQL attached, DATABASE_URL secret) and run it; create a one-off job acuity-seed (`node server/dist/seed.js` with NODE_ENV=production and ALLOW_DEMO_SEED=true set only on that job), run it, then delete it so the override no longer exists; smoke-test student and tutor sign-in.
 - Errors: None reported.
 - Time spent: Not tracked.
+
+## 6.2 Step 7: Seed Failed (Migrations Not Applied), Fixed Blocks Issued
+
+- Timestamp: 2026-10-07T21:29:29-04:00
+- Prompt: The seed block failed: the job exited with code 1; acuity-seed was deleted and the ALLOW_DEMO_SEED count on the service is 0. The sign-in check broke with "-bash: !2026: event not found" (bash history expansion on "!" in the passwords), and $URL was not set, so it posted to "/api/auth/login" and got 400. Asked whether migrations have run and for a migration block followed by a fixed seed block.
+- Error details: Seed log: PrismaClientKnownRequestError P2021 "The table `public.User` does not exist in the current database" at `prisma.user.upsert()` (server/dist/seed.js:57), clientVersion 6.19.3; "Container called exit(1)". Cause: migrations had not been applied to Cloud SQL (Block 4A either not run or not successful). The seed failed on its first query, so no partial data was written.
+- Actions: Issued a migration block that first shows any previous acuity-migrate executions, then (re)creates and runs the job and lists the result; and a fixed seed block that runs `set +H`, sets URL explicitly to the live URL, uses single-quoted JSON for the sign-in checks, recreates and runs acuity-seed once, deletes it, and re-checks that ALLOW_DEMO_SEED is absent.
+- Time spent: Not tracked.
