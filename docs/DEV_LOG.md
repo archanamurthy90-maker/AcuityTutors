@@ -321,3 +321,10 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Error details: Seed log: PrismaClientKnownRequestError P2021 "The table `public.User` does not exist in the current database" at `prisma.user.upsert()` (server/dist/seed.js:57), clientVersion 6.19.3; "Container called exit(1)". Cause: migrations had not been applied to Cloud SQL (Block 4A either not run or not successful). The seed failed on its first query, so no partial data was written.
 - Actions: Issued a migration block that first shows any previous acuity-migrate executions, then (re)creates and runs the job and lists the result; and a fixed seed block that runs `set +H`, sets URL explicitly to the live URL, uses single-quoted JSON for the sign-in checks, recreates and runs acuity-seed once, deletes it, and re-checks that ALLOW_DEMO_SEED is absent.
 - Time spent: Not tracked.
+
+## 6.2 Step 8: Migration, Seed, and Sign-in Blocks Reissued
+
+- Timestamp: 2026-10-07T21:33:04-04:00
+- Prompt: Logs confirm Prisma P2021 (table does not exist); migrations were never applied to Cloud SQL. Requested three separate blocks: create and run acuity-migrate (prisma migrate deploy) with the same image, Cloud SQL connection, service account, and DATABASE_URL secret, confirming all 4 migrations applied; the seed block again (set +H, single quotes, URL set); the two sign-in checks; using the same command path as the seed job.
+- Actions: Reissued as three blocks. The migrate job now runs `node node_modules/prisma/build/index.js migrate deploy` through `/cnb/lifecycle/launcher`, the same pattern as the seed job (which reached the database), so it doesn't rely on npx resolving the CLI. Confirmation reads the job's Cloud Logging output and counts applied migrations.
+- Time spent: Not tracked.
