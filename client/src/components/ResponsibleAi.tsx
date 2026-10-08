@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { apiFetch } from '../lib/api.js'
+import { apiFetch, readApiJson } from '../lib/api.js'
 
 const reasonMaxLength = 300
 
@@ -54,7 +54,7 @@ export function ReportQuestion({ questionId }: { questionId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reason.trim() ? { reason: reason.trim() } : {}),
       })
-      const data = (await response.json()) as { error?: string; details?: Array<{ message: string }> }
+      const data = (await readApiJson(response)) as { error?: string; details?: Array<{ message: string }> }
       if (response.status === 409) {
         setReported(true)
         return
@@ -130,7 +130,7 @@ export function ReportedQuestions() {
     let active = true
     apiFetch('/tutor/question-reports')
       .then(async (response) => {
-        const data = (await response.json()) as { reports?: QuestionReport[]; error?: string }
+        const data = (await readApiJson(response)) as { reports?: QuestionReport[]; error?: string }
         if (!response.ok) throw new Error(data.error ?? 'Unable to load reported questions.')
         if (active) setReports(data.reports ?? [])
       })

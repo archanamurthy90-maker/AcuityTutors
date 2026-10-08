@@ -3,7 +3,8 @@ import { z } from 'zod'
 import type { MasteryStatus } from './mastery.js'
 
 export const GEMINI_MODEL = 'gemini-3.8-flash'
-const requestTimeoutMs = 30_000
+// Must stay well below the Cloud Run request timeout so the app answers with its own 504 first.
+export const GEMINI_TIMEOUT_MS = 30_000
 
 // Learners and tutors only ever see plain text, so links, email addresses, and markup in
 // model output are treated as unsafe and the whole response is rejected.
@@ -79,7 +80,7 @@ function createClient() {
   if (!apiKey) {
     throw new GeminiServiceError(503, 'AI practice is not configured yet. Please contact your tutor.', 'Missing GEMINI_API_KEY.')
   }
-  return new GoogleGenAI({ apiKey, httpOptions: { timeout: requestTimeoutMs } })
+  return new GoogleGenAI({ apiKey, httpOptions: { timeout: GEMINI_TIMEOUT_MS } })
 }
 
 // The models API throws ApiError, but the Interactions API throws its own APIError
@@ -103,7 +104,7 @@ export function mapProviderError(error: unknown): GeminiServiceError {
   if (status !== null && status >= 500) {
     return new GeminiServiceError(503, 'The AI tutor is temporarily unavailable. Please try again shortly.', detail)
   }
-  if (error instanceof Error && /timeout|aborted/i.test(`${error.name} ${error.message}`)) {
+  if (error instanceof Error && /timeout|timed out|aborted/i.test(`${error.name} ${error.message}`)) {
     return new GeminiServiceError(504, 'The AI tutor took too long to respond. Please try again.', error.message)
   }
   return new GeminiServiceError(502, 'The AI tutor could not create a reliable response. Please try again.', error instanceof Error ? error.message : 'Unknown Gemini error.')
@@ -128,9 +129,44 @@ export function parseGeminiJson<T>(outputText: string, schema: z.ZodType<T>): T 
   }
 }
 
-async function generateJson<T>(input: string, responseSchema: object, outputSchema: z.ZodType<T>): Promise<T> {
+// The Interactions client ignores the client-level httpOptions.timeout (it calls with no timeout
+// and up to 4 retries), so each call gets its own timeout, no retries, and an abort signal.
+export function geminiRequestOptions(signal: AbortSignal) {
+  return { timeout: GEMINI_TIMEOUT_MS, maxRetries: 0, fetchOptions: { signal } }
+}
+
+// Hard deadline independent of the SDK: abort the request and fail with the friendly 504.
+export async function withDeadline<T>(run: (signal: AbortSignal) => Promise<T>, timeoutMs = GEMINI_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      reject(new GeminiServiceError(504, 'The AI tutor took too long to respond. Please try again.', `Gemini request exceeded ${timeoutMs} ms.`))
+    }, timeoutMs)
+  })
   try {
-    const interaction = await createClient().interactions.create({
+    return await Promise.race([run(controller.signal), deadline])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+type GeminiTask = 'practice_question' | 'tutor_summary'
+
+// One structured line per call (no prompts, output, or student data) so Cloud Run logs show
+// whether failures are quota (429), timeouts (504), configuration (503), or invalid output (502).
+export function logGeminiCall(task: GeminiTask, startedAt: number, error?: GeminiServiceError) {
+  const entry = { event: 'gemini_call', task, outcome: error ? 'error' : 'ok', status: error?.statusCode ?? 200, elapsedMs: Date.now() - startedAt }
+  if (error) console.warn(JSON.stringify(entry))
+  else console.log(JSON.stringify(entry))
+}
+
+async function generateJson<T>(task: GeminiTask, input: string, responseSchema: object, outputSchema: z.ZodType<T>): Promise<T> {
+  const startedAt = Date.now()
+  try {
+    const client = createClient()
+    const interaction = await withDeadline((signal) => client.interactions.create({
       model: GEMINI_MODEL,
       system_instruction: SYSTEM_INSTRUCTION,
       input,
@@ -139,12 +175,18 @@ async function generateJson<T>(input: string, responseSchema: object, outputSche
         mime_type: 'application/json',
         schema: responseSchema,
       },
+      // Short, structured tasks: low thinking keeps latency down.
+      generation_config: { thinking_level: 'low' },
       store: false,
-    })
+    }, geminiRequestOptions(signal)))
     if (!interaction.output_text) throw new Error('Gemini returned no text.')
-    return parseGeminiJson(interaction.output_text, outputSchema)
+    const result = parseGeminiJson(interaction.output_text, outputSchema)
+    logGeminiCall(task, startedAt)
+    return result
   } catch (error) {
-    throw mapProviderError(error)
+    const mapped = mapProviderError(error)
+    logGeminiCall(task, startedAt, mapped)
+    throw mapped
   }
 }
 
@@ -196,9 +238,9 @@ export function buildTutorSummaryPrompt(topics: StudentTopicSummary[]) {
 }
 
 export function generatePracticeQuestion(input: PracticeQuestionInput): Promise<GeneratedQuestion> {
-  return generateJson(buildPracticeQuestionPrompt(input), questionResponseSchema, generatedQuestionSchema)
+  return generateJson('practice_question', buildPracticeQuestionPrompt(input), questionResponseSchema, generatedQuestionSchema)
 }
 
 export function generateTutorSummary(topics: StudentTopicSummary[]): Promise<string> {
-  return generateJson(buildTutorSummaryPrompt(topics), summaryResponseSchema, tutorSummarySchema).then((result) => result.summary)
+  return generateJson('tutor_summary', buildTutorSummaryPrompt(topics), summaryResponseSchema, tutorSummarySchema).then((result) => result.summary)
 }

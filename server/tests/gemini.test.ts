@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ApiError } from '@google/genai'
 import { z } from 'zod'
-import { buildPracticeQuestionPrompt, buildTutorSummaryPrompt, containsUnsafeOutput, GeminiServiceError, generatedQuestionSchema as questionSchemaForTests, mapProviderError, parseGeminiJson, SYSTEM_INSTRUCTION } from '../src/services/gemini.js'
+import { buildPracticeQuestionPrompt, GEMINI_TIMEOUT_MS, geminiRequestOptions, logGeminiCall, withDeadline, buildTutorSummaryPrompt, containsUnsafeOutput, GeminiServiceError, generatedQuestionSchema as questionSchemaForTests, mapProviderError, parseGeminiJson, SYSTEM_INSTRUCTION } from '../src/services/gemini.js'
 
 const questionSchema = z.object({
   question: z.string().min(10),
@@ -111,4 +111,51 @@ test('RAI-07: output with links, email addresses, or markup fails validation (sa
     assert.throws(() => parseGeminiJson(JSON.stringify(unsafe), questionSchemaForTests), (error: unknown) => error instanceof GeminiServiceError && error.statusCode === 502 && !/https|example\.com|<b>/.test(error.publicMessage))
   }
   assert.equal(containsUnsafeOutput('Consider reviewing equivalent fractions next.'), false)
+})
+
+test('BUG-10: every Interactions request carries its own timeout, no retries, and an abort signal', () => {
+  const controller = new AbortController()
+  const options = geminiRequestOptions(controller.signal)
+  assert.equal(options.timeout, GEMINI_TIMEOUT_MS)
+  assert.equal(options.maxRetries, 0)
+  assert.equal(options.fetchOptions.signal, controller.signal)
+  // Cloud Run's request timeout (60 s) must leave room for the app's own 504.
+  assert.ok(GEMINI_TIMEOUT_MS <= 30_000)
+})
+
+test('BUG-10: a hung Gemini call is aborted at the deadline with the friendly 504', async () => {
+  let aborted = false
+  const started = Date.now()
+  await assert.rejects(
+    withDeadline((signal) => new Promise(() => { signal.addEventListener('abort', () => { aborted = true }) }), 50),
+    (error: unknown) => error instanceof GeminiServiceError && error.statusCode === 504 && error.publicMessage === 'The AI tutor took too long to respond. Please try again.',
+  )
+  assert.ok(aborted, 'the request signal is aborted')
+  assert.ok(Date.now() - started < 1000)
+  assert.equal(await withDeadline(async () => 'ok', 50), 'ok')
+})
+
+test('BUG-10: SDK timeout and abort errors map to 504', () => {
+  assert.equal(mapProviderError(new Error('Request timed out. This is a client-side timeout.')).statusCode, 504)
+  assert.equal(mapProviderError(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })).statusCode, 504)
+})
+
+test('BUG-10: each Gemini call logs one line with task, outcome, status, and duration only', () => {
+  const lines: string[] = []
+  const original = { log: console.log, warn: console.warn }
+  console.log = (line: string) => { lines.push(line) }
+  console.warn = (line: string) => { lines.push(line) }
+  try {
+    logGeminiCall('practice_question', Date.now() - 1200)
+    logGeminiCall('tutor_summary', Date.now(), new GeminiServiceError(429, 'busy', 'Rate limit exceeded for model (20 requests per day)'))
+  } finally {
+    console.log = original.log
+    console.warn = original.warn
+  }
+  const [ok, failed] = lines.map((line) => JSON.parse(line) as Record<string, unknown>)
+  assert.equal(ok.event, 'gemini_call')
+  assert.equal(ok.outcome, 'ok')
+  assert.ok((ok.elapsedMs as number) >= 1200)
+  assert.deepEqual(Object.keys(failed).sort(), ['elapsedMs', 'event', 'outcome', 'status', 'task'])
+  assert.equal(failed.status, 429)
 })

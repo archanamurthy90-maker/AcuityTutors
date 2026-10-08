@@ -1,7 +1,7 @@
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type HTMLAttributes, type ReactNode } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import './App.css'
-import { apiBaseUrl, apiFetch, sessionNoticeFromMe, setUnauthorizedHandler } from './lib/api.js'
+import { apiBaseUrl, apiFetch, readApiJson, sessionNoticeFromMe, setUnauthorizedHandler } from './lib/api.js'
 import { describeProgress } from './lib/progress.js'
 import { AiLabel, MasteryExplainer, ReportedQuestions, ReportQuestion } from './components/ResponsibleAi.js'
 
@@ -204,7 +204,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
           ...(isRegister ? { displayName: displayName.trim() } : {}),
         }),
       })
-      const data = (await response.json()) as {
+      const data = (await readApiJson(response)) as {
         user?: AuthUser
         error?: string
         details?: Array<{ field: string; message: string }>
@@ -409,8 +409,8 @@ function WorkspacePage() {
           apiFetch(`/${role}/dashboard`),
           apiFetch(`/${role}/mastery`),
         ])
-        const dashboardData = (await dashboardResponse.json()) as { message?: string; error?: string }
-        const masteryData = (await masteryResponse.json()) as {
+        const dashboardData = (await readApiJson(dashboardResponse)) as { message?: string; error?: string }
+        const masteryData = (await readApiJson(masteryResponse)) as {
           scores?: MasteryScore[]
           students?: RosterStudent[]
           error?: string
@@ -443,7 +443,7 @@ function WorkspacePage() {
 
     apiFetch('/student/progress')
       .then(async (response) => {
-        const data = (await response.json()) as { progress?: TopicProgress[]; error?: string }
+        const data = (await readApiJson(response)) as { progress?: TopicProgress[]; error?: string }
         if (!response.ok) throw new Error(data.error ?? 'Unable to load progress history.')
         return data.progress ?? []
       })
@@ -462,7 +462,7 @@ function WorkspacePage() {
     let active = true
     apiFetch(`/tutor/students/${selectedStudentId}/progress`)
       .then(async (response) => {
-        const data = (await response.json()) as { progress?: TopicProgress[]; error?: string }
+        const data = (await readApiJson(response)) as { progress?: TopicProgress[]; error?: string }
         if (!response.ok) throw new Error(data.error ?? 'Unable to load this student’s progress.')
         return data.progress ?? []
       })
@@ -509,7 +509,7 @@ function WorkspacePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topicId, isCorrect: attemptIsCorrect }),
       })
-      const data = (await response.json()) as {
+      const data = (await readApiJson(response)) as {
         error?: string
         mastery?: { accuracy: number | null; status: MasteryStatus; totalAttempts: number }
       }
@@ -531,13 +531,13 @@ function WorkspacePage() {
 
   async function handleGenerateQuestion() {
     setGeneratingQuestion(true)
-    setAnnouncement('Creating a practice question. This can take a few seconds.')
+    setAnnouncement('Creating a practice question. This can take up to 30 seconds.')
     setPracticeError('')
     setPracticeResult(null)
     setSelectedAnswer('')
     try {
       const response = await apiFetch('/student/practice-questions', { method: 'POST' })
-      const data = (await response.json()) as { practiceQuestion?: GeneratedPracticeQuestion; error?: string }
+      const data = (await readApiJson(response)) as { practiceQuestion?: GeneratedPracticeQuestion; error?: string }
       if (!response.ok || !data.practiceQuestion) throw new Error(data.error ?? 'Unable to make a practice question.')
       setGeneratedQuestion(data.practiceQuestion)
     } catch (requestError) {
@@ -559,7 +559,7 @@ function WorkspacePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answer: selectedAnswer }),
       })
-      const data = (await response.json()) as PracticeResult & { error?: string }
+      const data = (await readApiJson(response)) as PracticeResult & { error?: string }
       if (!response.ok || !data.mastery) throw new Error(data.error ?? 'Unable to grade this answer.')
       setPracticeResult(data)
       if (data.mastery.accuracy !== null) {
@@ -581,7 +581,7 @@ function WorkspacePage() {
     setSummaryErrors((current) => ({ ...current, [studentId]: '' }))
     try {
       const response = await apiFetch(`/tutor/students/${studentId}/summary`, { method: 'POST' })
-      const data = (await response.json()) as { summary?: string; error?: string }
+      const data = (await readApiJson(response)) as { summary?: string; error?: string }
       if (!response.ok || !data.summary) throw new Error(data.error ?? 'Unable to create a student summary.')
       setTutorSummaries((current) => ({ ...current, [studentId]: data.summary! }))
     } catch (requestError) {
@@ -664,6 +664,7 @@ function WorkspacePage() {
                   </button>
                 </div>
                 <p className="ai-practice-intro">Gemini, an AI model, writes a fresh question at a difficulty matched to your current mastery. AI questions can contain mistakes, so report any that look wrong.</p>
+                {generatingQuestion && <p className="ai-wait-note">This can take up to 30 seconds.</p>}
                 {scores.length === 0 && <p className="practice-empty-note">Log your first quiz attempt before generating targeted practice.</p>}
                 {weakest && <div className="weakest-topic-cue"><span>TOP PRIORITY</span><strong>{weakest.topic.subject.name} · {weakest.topic.name}</strong><span className={`mastery-status mastery-status-${weakest.status.toLowerCase().replaceAll('_', '-')}`}>{statusLabel(weakest.status)}</span></div>}
                 {practiceError && <p className="data-error" role="alert">{practiceError}</p>}
@@ -778,6 +779,7 @@ function WorkspacePage() {
                       <button className="secondary-action" type="button" onClick={() => handleGenerateSummary(student.id)} disabled={summaryLoadingId === student.id} aria-busy={summaryLoadingId === student.id} aria-describedby={`student-name-${student.id}`}>
                         {summaryLoadingId === student.id ? 'Writing summary…' : tutorSummaries[student.id] ? 'Refresh summary' : 'Generate summary'}
                       </button>
+                      {summaryLoadingId === student.id && <p className="ai-wait-note">This can take up to 30 seconds.</p>}
                       {summaryErrors[student.id] && <p className="form-error" role="alert">{summaryErrors[student.id]}</p>}
                       {tutorSummaries[student.id] && (
                         <div className="tutor-summary" role="status">
