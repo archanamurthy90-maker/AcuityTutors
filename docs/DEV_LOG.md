@@ -297,3 +297,11 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Actions: Issued Block 2 for Cloud Shell. Creates Cloud SQL instance acuity-tutors-db (PostgreSQL 17, Enterprise edition, db-f1-micro, 10 GB SSD, zonal, daily backups with 7 retained, public IP with no authorized networks), database acuity_tutors, and user acuity_app. Generates the database password and JWT secret inside Cloud Shell, reads the Gemini key with a hidden prompt, and stores all three only in Secret Manager (acuity-database-url, acuity-jwt-secret, acuity-gemini-api-key); no secret value is printed or shared in chat. Creates service account acuity-run-sa with roles/cloudsql.client and per-secret Secret Accessor. Separate instance from LeaseLens, since that project has no Cloud SQL instance to share.
 - Errors: None yet.
 - Time spent: Not tracked.
+
+## 6.2 Step 5: Block 2 Result, Block 3 (Deploy) Issued
+
+- Timestamp: 2026-10-07T21:17:23-04:00
+- Prompt: Block 2 done: instance RUNNABLE; user acuity_app; 3 acuity-* secrets; Gemini key re-added after the first paste came through empty (now 53 characters, verified with HTTP 200 from the models list); service account has roles/cloudsql.client and Secret Accessor on all three secrets. Ready for Block 3.
+- Actions: Issued Block 3: disable the empty first version of the Gemini secret if present; `gcloud run deploy acuity-tutors --source .` in us-east1 with Google Cloud buildpacks, runtime service account acuity-run-sa, Cloud SQL attached, the three secrets as env vars, NODE_ENV=production, 512 MiB, 1 CPU, min 0 / max 1 instances, public access (the app enforces its own sign-in); then set CLIENT_ORIGIN to the service URL and check /api/health and the security headers.
+- Errors: First Gemini key paste in Block 2 was empty (hidden prompt); fixed by adding a new secret version.
+- Time spent: Not tracked.
