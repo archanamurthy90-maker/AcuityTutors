@@ -51,6 +51,8 @@ type PracticeResult = {
   mastery: { accuracy: number | null; status: MasteryStatus; totalAttempts: number }
 }
 
+// Shown in the footers; bump on each release so a deployment is easy to confirm.
+const APP_VERSION = 'v1.1'
 const registrationPasswordRule = 'Use at least 8 characters, including a letter and a number.'
 const AuthContext = createContext<{
   user: AuthUser | null
@@ -337,7 +339,7 @@ function AuthPage({ mode }: { mode: AuthMode }) {
           <p className="auth-security">Your password is securely hashed before it is stored.</p>
         </section>
       </main>
-      <footer className="auth-footer"><span>ACUITY TUTORS</span><span>Focused practice starts with a clear picture.</span></footer>
+      <footer className="auth-footer"><span>ACUITY TUTORS</span><span>Focused practice starts with a clear picture.</span><span className="app-version">{APP_VERSION}</span></footer>
     </div>
   )
 }
@@ -800,7 +802,7 @@ function WorkspacePage() {
           </>
         )}
       </main>
-      <footer className="dashboard-footer"><span>ACUITY TUTORS</span><span>Focused practice starts with a clear picture.</span></footer>
+      <footer className="dashboard-footer"><span>ACUITY TUTORS</span><span>Focused practice starts with a clear picture.</span><span className="app-version">{APP_VERSION}</span></footer>
     </div>
   )
 }
