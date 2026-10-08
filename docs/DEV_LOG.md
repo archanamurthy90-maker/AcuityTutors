@@ -336,3 +336,11 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Results: acuity-migrate applied the 4 migrations; the one-off acuity-seed job loaded the demo data and was deleted (ALLOW_DEMO_SEED count on the service: 0); Ava and tutor sign-in returned 200 at https://acuity-tutors-1045685760887.us-east1.run.app. Deployment is now configured and verified.
 - Actions: Rewrote the README deployment section to describe the live resources (Cloud SQL, secrets, service account, service, migrate job, launcher command form, manual redeploy) and removed "Cloud deployment not configured" from the scaffold boundary. Continuous deployment: chose the Cloud Run console's "Connect repo" (Cloud Build trigger on ^main$ with buildpacks), which updates the existing service's image and keeps its configuration. Prepared the v1.1 footer change locally, to be pushed only after the trigger exists.
 - Time spent: Not tracked.
+
+## 6.2 Step 10: Live AI Requests Slow or Failing (Diagnosis)
+
+- Timestamp: 2026-10-07T21:45:50-04:00
+- Prompt: On the live app, Generate question and Generate summary are very slow and often fail; the screen shows the loading labels ("Creating…" / "Writing summary…"). Diagnose whether the cause is the Gemini free-tier quota (shared with the local app), a timeout, or configuration, without making extra Gemini calls. (Error message and log output were not included.)
+- Findings from code (no Gemini calls): each Gemini request has a 30-second client timeout (`requestTimeoutMs`); the browser waits for the server with no timeout of its own, so the label stays up to about 30 seconds plus any cold start (min instances 0). `apiErrorHandler` returns a GeminiServiceError's public message but never logs it, so Cloud Run application logs do not show whether a failure was 429 (quota), 504 (timeout), 503 (key or permission), or 502 (invalid output). The live service and the local app share one free-tier key (20 requests per day for gemini-3.8-flash, seen in Phase 4).
+- Actions: Issued a read-only Cloud Shell block that reads Cloud Run request logs (status code and latency) for the two AI endpoints plus the API key's daily request count, so the cause can be identified without calling Gemini. Proposed fixes per cause; no code changed yet.
+- Time spent: Not tracked.
