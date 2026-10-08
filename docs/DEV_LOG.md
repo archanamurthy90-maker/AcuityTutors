@@ -305,3 +305,11 @@ Each deployment prompt is logged below with its timestamp, actions, and errors. 
 - Actions: Issued Block 3: disable the empty first version of the Gemini secret if present; `gcloud run deploy acuity-tutors --source .` in us-east1 with Google Cloud buildpacks, runtime service account acuity-run-sa, Cloud SQL attached, the three secrets as env vars, NODE_ENV=production, 512 MiB, 1 CPU, min 0 / max 1 instances, public access (the app enforces its own sign-in); then set CLIENT_ORIGIN to the service URL and check /api/health and the security headers.
 - Errors: First Gemini key paste in Block 2 was empty (hidden prompt); fixed by adding a new secret version.
 - Time spent: Not tracked.
+
+## 6.2 Step 6: Block 3 Result (Service Deployed), Block 4 Issued
+
+- Timestamp: 2026-10-07T21:24:47-04:00
+- Prompt: Block 3 done. Live URL: https://acuity-tutors-1045685760887.us-east1.run.app. The sign-in page loads and /api/health returns {"status":"ok"}. Requested the next block: run migrations, seed demo data once with ALLOW_DEMO_SEED=true (then remove it), and set CLIENT_ORIGIN to this URL.
+- Actions: Cloud Run service acuity-tutors deployed from source (us-east1); production health and sign-in page confirmed by the user. Issued Block 4: set CLIENT_ORIGIN to both Cloud Run URL forms (the project-number URL above and the status URL); create Cloud Run Job acuity-migrate from the service image (`prisma migrate deploy` through the buildpack launcher, Cloud SQL attached, DATABASE_URL secret) and run it; create a one-off job acuity-seed (`node server/dist/seed.js` with NODE_ENV=production and ALLOW_DEMO_SEED=true set only on that job), run it, then delete it so the override no longer exists; smoke-test student and tutor sign-in.
+- Errors: None reported.
+- Time spent: Not tracked.
